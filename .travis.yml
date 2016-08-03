@@ -11,6 +11,8 @@ python:
   - '3.4'
   - '3.5'
   - 'pypy'
+install:
+  - pip install coveralls
 script:
   - coverage run --source=quicksave --omit=*__init__.py -m unittest discover -v
 after_success:
