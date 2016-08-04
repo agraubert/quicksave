@@ -136,12 +136,13 @@ def command_revert(args):
             args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
             sys.exit("Unable to revert: Could not infer the primary key.  Please set one explicitly with the -p option")
+    args.primary_key = _CURRENT_DATABASE.resolve_key(args.primary_key, True)
     if args.stash and not args.state == '~stash':
         did_stash = True
         if args.primary_key+":~stash" in _CURRENT_DATABASE.state_keys:
             oldfile = _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"][2]
-            if oldfile in _CURRENT_DATABASE.primary_key[args.primary_key][2]:
-                _CURRENT_DATABASE.primary_key[args.primary_key][2].remove(oldfile)
+            if oldfile in _CURRENT_DATABASE.primary_keys[args.primary_key][2]:
+                _CURRENT_DATABASE.primary_keys[args.primary_key][2].remove(oldfile)
             del _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"]
         _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name), '~stash')
     if args.primary_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
