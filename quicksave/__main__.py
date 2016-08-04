@@ -18,14 +18,14 @@ configfile = os.path.join(os.path.expanduser('~'), '.quicksave_config')
 def check_is_directory(argument):
     fullpath = os.path.abspath(argument)
     if os.path.isfile(fullpath):
-        raise argparse.ArgumentTypeError("Path \"%s\" must be a directory")
+        raise argparse.ArgumentTypeError("Path \"%s\" must be a directory"%argument)
     os.makedirs(fullpath, exist_ok=True)
     return fullpath
 
 def read_write_file_exists(argument):
     fullpath = os.path.abspath(argument)
     if not os.path.isfile(fullpath):
-        raise argparse.ArgumentTypeError("Path \"%s\" must be a file")
+        raise argparse.ArgumentTypeError("Path \"%s\" must be a file"%argument)
     return open(fullpath, 'a+b')
 
 def initdb():
@@ -35,7 +35,12 @@ def initdb():
         database_path = reader.read().strip()
         reader.close()
         if database_path != "<N/A>":
-            _CURRENT_DATABASE = db(database_path)
+            try:
+                _CURRENT_DATABASE = db(database_path)
+            except FileNotFoundError:
+                sys.exit("Unable to open the database.  It may have been deleted, or the config file may have been manually edited. Run '$ quicksave init <databse path>' to resolve")
+            except:
+                sys.exit("The database is corrupted.  Use '$ quicksave init <database path>' and initialize a new database")
     if not _CURRENT_DATABASE:
         writer = open(configfile, mode='w')
         writer.write("<N/A>\n")
@@ -50,6 +55,10 @@ def command_init(args):
 def command_register(args):
     initdb()
     filepath = os.path.abspath(args.filename.name)
+    if filepath in _CURRENT_DATABASE.primary_keys and not args.ignore_filepath:
+        sys.exit("Unable to register: Filepath is registered to primary key %s (use --ignore-filepath to override this behavior)"%(
+            _CURRENT_DATABASE.primary_keys[filepath][0]
+        ))
     (key, folder) = _CURRENT_DATABASE.register_pk(filepath)
     if key in _SPECIAL_PRIMARY:
         sys.exit("Unable to register: The provided filename overwrites a reserved primary key (%s)"%key)
@@ -114,12 +123,17 @@ def command_save(args):
         chunk = args.filename.read(4096)
     args.filename.close()
     hashalias = hasher.hexdigest()
-    _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias)
     if args.primary_key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
         del _CURRENT_DATABASE.state_keys[args.primary_key+":"+hashalias[:7]]
-    elif args.force or args.primary_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
+    elif args.primary_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
         _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias[:7], args.force)
         aliases.append(hashalias[:7])
+    if args.primary_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
+        # print("The state of the current file matches a previously registered state for this primary key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
+        sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior)"%(
+            _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.primary_key+":"+hashalias][0], False).replace(args.primary_key+":", '', 1)
+        ))
+    _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias)
     _CURRENT_DATABASE.save()
     if infer:
         print("Inferred primary key:", args.primary_key)
@@ -256,6 +270,12 @@ def main(args_input=sys.argv[1:]):
         "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
         "at least one must be unique or the operation will be canceled."
     )
+    register_parser.add_argument(
+        '--ignore-filepath',
+        action='store_true',
+        help="Normally, register will halt if the file being registered matches the filepath of an existing primary key.\n"+
+        "If --ignore-filepath is set, it will allow the file to be registered anyways"
+    )
 
     save_parser = subparsers.add_parser(
         'save',
@@ -294,6 +314,11 @@ def main(args_input=sys.argv[1:]):
         help="Overwrite any existing state aliases.  The automatically generated state key will always be unique\n"+
         "but the 7 character sha-256 prefix and any user aliases will overwrite existing state aliaes."
     )
+    save_parser.add_argument(
+        '--allow-duplicate',
+        action='store_true',
+        help='Save the state even if an identical state exists.'
+    )
 
     revert_parser = subparsers.add_parser(
         'revert',
@@ -304,7 +329,7 @@ def main(args_input=sys.argv[1:]):
     revert_parser.set_defaults(func=command_revert)
     revert_parser.add_argument(
         'filename',
-        type=read_write_file_exists,
+        type=argparse.FileType('rb'),#read_write_file_exists,
         help="The file to revert"
     )
     revert_parser.add_argument(
