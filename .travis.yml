@@ -12,11 +12,14 @@ python:
   - '3.5'
   - 'pypy'
 install:
-  - pip install coveralls
+  - if [[ "$TRAVIS_PYTHON_VERSION" != "3.2" ]]; then pip install coveralls; fi
 script:
-  - coverage run --source=quicksave --omit=*__init__.py -m unittest discover -v
+  - if [[ "$TRAVIS_PYTHON_VERSION" != "3.2" ]];
+    then coverage run --source=quicksave --omit=*__init__.py -m unittest discover -v;
+    else python3 -m unittest discover -v;
+    fi
 after_success:
-  - coveralls
+  - if [[ "$TRAVIS_PYTHON_VERSION" != "3.2" ]]; then coveralls; fi
 # before_deploy:
 #   - wget http://github.com/jgm/pandoc/releases/download/1.17.1/pandoc-1.17.1-2-amd64.deb
 #   - sudo dpkg -i pandoc-1.17.1-2-amd64.deb
