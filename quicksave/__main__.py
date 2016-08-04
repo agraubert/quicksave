@@ -158,6 +158,41 @@ def command_revert(args):
         _CURRENT_DATABASE.save()
         print("Old state saved to: ~stash")
 
+def command_alias(args):
+    pass
+
+def command_list(args):
+    initdb()
+    if not args.primary:
+        print("Showing all primary keys", "and aliases" if args.aliases else '')
+        print()
+        for key in _CURRENT_DATABASE.primary_keys:
+            isprimary = _CURRENT_DATABASE.primary_keys[key][0]
+            if not isprimary:
+                print('Primary Key: ' if args.aliases else '', key, sep='')
+            elif args.aliases:
+                print("Primary Alias:", key, "(Alias of: %s)"%isprimary)
+    else:
+        print("Showing all state keys", " and aliases" if args.aliases else '', " for primary key ", args.primary, sep='')
+        print()
+        for key in _CURRENT_DATABASE.state_keys:
+            if _CURRENT_DATABASE.state_keys[key][1] == args.primary:
+                isprimary = _CURRENT_DATABASE.state_keys[key][0]
+                display_key = key.replace(args.primary+":", '', 1)
+                if not isprimary:
+                    print("State Key: " if args.aliases else '', display_key, sep='')
+                elif args.aliases:
+                    print("State Alias:", display_key, "(Alias of: %s)"%isprimary.replace(args.primary+":", '', 1))
+
+def command_delete(args):
+    pass
+
+def command_lookup(args):
+    pass
+
+def command_recover(args):
+    pass
+
 
 def main(args_input=sys.argv[1:]):
     parser = argparse.ArgumentParser(
@@ -290,7 +325,7 @@ def main(args_input=sys.argv[1:]):
         "'$ quicksave -d <link> <primary>' delets the state key alias <link> under the primary key <primary>.  Cannot delete state keys (only aliases).\n"+
         "To delete authoritative primary or state keys, use '$ quicksave delete-key <primary key> [state key]'"
     )
-    alias_parser.set_defaults(func=None)
+    alias_parser.set_defaults(func=command_alias)
     alias_parser.add_argument(
         "link",
         help="The alias to create, overwrite, or delete."
@@ -317,7 +352,7 @@ def main(args_input=sys.argv[1:]):
         'list',
         description="Lists all primary keys in this database, or all state keys under a provided primary key (or alias)"
     )
-    list_parser.set_defaults(func=None)
+    list_parser.set_defaults(func=command_list)
     list_parser.add_argument(
         'primary',
         nargs='?',
@@ -334,7 +369,7 @@ def main(args_input=sys.argv[1:]):
         'delete-key',
         description="Deletes a primary or state key, and all its aliases"
     )
-    delete_parser.set_defaults(func=None)
+    delete_parser.set_defaults(func=command_delete)
     delete_parser.add_argument(
         'primary',
         nargs='?',
@@ -364,7 +399,7 @@ def main(args_input=sys.argv[1:]):
         'lookup',
         description="Returns the authoritative primary or state key for a given alias"
     )
-    lookup_parser.set_defaults(func=None)
+    lookup_parser.set_defaults(func=command_lookup)
     lookup_parser.add_argument(
         'primary',
         nargs='?',
@@ -384,7 +419,7 @@ def main(args_input=sys.argv[1:]):
         "Old aliases of the deleted key are not recovered, and must be set manually.\n"+
         "Returns the new primary key and list of aliases, if provided"
     )
-    recover_parser.set_defaults(func=None)
+    recover_parser.set_defaults(func=command_recover)
     recover_parser.add_argument(
         'aliases',
         nargs="+",
