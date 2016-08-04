@@ -95,6 +95,8 @@ def command_save(args):
             args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
             sys.exit("Unable to save: Could not infer the primary key.  Please set one explicitly with the -p option")
+    if args.primary_key not in _CURRENT_DATABASE.primary_keys:
+        sys.exit("Unable to save: The requested primary key does not exist in this database (%s)" %(args.primary))
     (key, datafile) = _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name))
     aliases = []
     if len(args.aliases):
@@ -136,6 +138,8 @@ def command_revert(args):
             args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
             sys.exit("Unable to revert: Could not infer the primary key.  Please set one explicitly with the -p option")
+    if args.primary_key not in _CURRENT_DATABASE.primary_keys:
+        sys.exit("Unable to revert: The requested primary key does not exist in this database (%s)" %(args.primary))
     args.primary_key = _CURRENT_DATABASE.resolve_key(args.primary_key, True)
     if args.stash and not args.state == '~stash':
         did_stash = True
@@ -159,7 +163,7 @@ def command_revert(args):
         print("Old state saved to: ~stash")
 
 def command_alias(args):
-    pass
+    sys.exit("This command is not yet ready")
 
 def command_list(args):
     initdb()
@@ -173,6 +177,8 @@ def command_list(args):
             elif args.aliases:
                 print("Primary Alias:", key, "(Alias of: %s)"%isprimary)
     else:
+        if args.primary not in _CURRENT_DATABASE.primary_keys:
+            sys.exit("Unable to list: The requested primary key does not exist in this database (%s)" %(args.primary))
         print("Showing all state keys", " and aliases" if args.aliases else '', " for primary key ", args.primary, sep='')
         print()
         for key in _CURRENT_DATABASE.state_keys:
@@ -185,13 +191,25 @@ def command_list(args):
                     print("State Alias:", display_key, "(Alias of: %s)"%isprimary.replace(args.primary+":", '', 1))
 
 def command_delete(args):
-    pass
+    sys.exit("This command is not yet ready")
 
 def command_lookup(args):
-    pass
+    initdb()
+    if not (args.primary or args.target in _CURRENT_DATABASE.primary_keys):
+        sys.exit("Unable to lookup: The requested primary key does not exist in this database (%s)" %(args.primary))
+    if args.primary:
+        args.primary = _CURRENT_DATABASE.resolve_key(args.primary, True)
+    if args.primary and args.primary+":"+args.target not in _CURRENT_DATABASE.state_keys:
+        sys.exit("Unable to lookup: The requested state (%s) does not exist for this primary key (%s)" %(args.target, args.primary))
+    keyheader = args.primary+":" if args.primary else ''
+    result = _CURRENT_DATABASE.resolve_key(keyheader+args.target, not args.primary)
+    if keyheader:
+        result = result.replace(args.primary+":", '', 1)
+    print(args.target, '-->', result)
+
 
 def command_recover(args):
-    pass
+    sys.exit("This command is not yet ready")
 
 
 def main(args_input=sys.argv[1:]):
