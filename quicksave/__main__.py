@@ -105,7 +105,7 @@ def command_save(args):
         else:
             sys.exit("Unable to save: Could not infer the primary key.  Please set one explicitly with the -p option")
     if args.primary_key not in _CURRENT_DATABASE.primary_keys:
-        sys.exit("Unable to save: The requested primary key does not exist in this database (%s)" %(args.primary))
+        sys.exit("Unable to save: The requested primary key does not exist in this database (%s)" %(args.primary_key))
     (key, datafile) = _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name))
     aliases = []
     if len(args.aliases):
@@ -130,7 +130,7 @@ def command_save(args):
         aliases.append(hashalias[:7])
     if args.primary_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
         # print("The state of the current file matches a previously registered state for this primary key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
-        sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior)"%(
+        sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
             _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.primary_key+":"+hashalias][0], False).replace(args.primary_key+":", '', 1)
         ))
     _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias)
@@ -153,7 +153,7 @@ def command_revert(args):
         else:
             sys.exit("Unable to revert: Could not infer the primary key.  Please set one explicitly with the -p option")
     if args.primary_key not in _CURRENT_DATABASE.primary_keys:
-        sys.exit("Unable to revert: The requested primary key does not exist in this database (%s)" %(args.primary))
+        sys.exit("Unable to revert: The requested primary key does not exist in this database (%s)" %(args.primary_key))
     args.primary_key = _CURRENT_DATABASE.resolve_key(args.primary_key, True)
     if args.stash and not args.state == '~stash':
         did_stash = True
@@ -162,7 +162,16 @@ def command_revert(args):
             if oldfile in _CURRENT_DATABASE.primary_keys[args.primary_key][2]:
                 _CURRENT_DATABASE.primary_keys[args.primary_key][2].remove(oldfile)
             del _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"]
-        _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name), '~stash')
+        hasher = sha256()
+        chunk = args.filename.read(4096)
+        while len(chunk):
+            hasher.update(chunk)
+            chunk = args.filename.read(4096)
+        hashalias = hasher.hexdigest()
+        if args.primary_key+":"+hashalias in _CURRENT_DATABASE.state_keys:
+            _CURRENT_DATABASE.register_sa(args.primary_key, hashalias, '~stash', True)
+        else:
+            _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name), '~stash')
     if args.primary_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
         sys.exit("Unable to revert: The requested state (%s) does not exist for this primary key (%s)" %(args.state, args.primary_key))
     args.filename.close()
@@ -345,17 +354,18 @@ def main(args_input=sys.argv[1:]):
         help="The state key or alias to revert to."
     )
     revert_parser.add_argument(
-        '--stash',
-        action='store_true',
-        help="Quickly save the state under the ~stash state key before reverting.\n"+
-        "This *CANNOT* be used if reverting to ~stash and will be ignored if provided in that case.\n"
+        '--no-stash',
+        action='store_false',
+        help="Do not save the state under the ~stash state key before reverting.\n"+
+        "This is the default if reverting to ~stash, but stashing is enabled in all other cases.\n"
         "If the file's full sha-256 hash is currently registered as a state alias,\n"+
         "then ~stash will simply alias this file's true state key.\n"+
         "Otherwise, the full state will be saved under ~stash.\n"
         "The ~stash state key should not be used for permanent storage as it may be frequently overwritten.\n"+
         "To save the current ~stash state permanently, use \n"+
         "'$ quicksave revert <filename> ~stash' then\n"+
-        "'$ quicksave save <filename>'"
+        "'$ quicksave save <filename>'",
+        dest='stash'
     )
 
     alias_parser = subparsers.add_parser(
