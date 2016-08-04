@@ -204,6 +204,7 @@ def command_list(args):
             sys.exit("Unable to list: The requested primary key does not exist in this database (%s)" %(args.primary))
         print("Showing all state keys", " and aliases" if args.aliases else '', " for primary key ", args.primary, sep='')
         print()
+        args.primary = _CURRENT_DATABASE.resolve_key(args.primary, True)
         for key in _CURRENT_DATABASE.state_keys:
             if _CURRENT_DATABASE.state_keys[key][1] == args.primary:
                 isprimary = _CURRENT_DATABASE.state_keys[key][0]
