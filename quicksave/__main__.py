@@ -40,6 +40,7 @@ def initdb():
         writer = open(configfile, mode='w')
         writer.write("<N/A>\n")
         writer.close()
+        sys.exit("No database loaded.  Please run '$ quicksave init' to create or load a database")
 
 def command_init(args):
     writer = open(configfile, mode='w')
@@ -65,7 +66,7 @@ def command_register(args):
         aliases.append(filepath)
     if os.path.basename(filepath) not in _SPECIAL_PRIMARY and _CURRENT_DATABASE.register_pa(key, os.path.basename(filepath)):
         aliases.append(os.path.basename(filepath))
-    (statekey, datafile) = _CURRENT_DATABASE.register_sk(key, os.path.basename(filepath))
+    (statekey, datafile) = _CURRENT_DATABASE.register_sk(key, os.path.relpath(filepath))
     hasher = sha256()
     chunk = args.filename.read(4096)
     while len(chunk):
@@ -82,6 +83,80 @@ def command_register(args):
     print("Registered new primary key:", key)
     print("Aliases for this key:", aliases)
     print("Initial state key:", statekey)
+
+def command_save(args):
+    initdb()
+    infer = not bool(args.primary_key)
+    if infer:
+        filepath = os.path.abspath(args.filename.name)
+        if filepath in _CURRENT_DATABASE.primary_keys:
+            args.primary_key = _CURRENT_DATABASE.resolve_key(filepath, True)
+        elif os.path.basename(filepath) in _CURRENT_DATABASE.primary_keys:
+            args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
+        else:
+            sys.exit("Unable to save: Could not infer the primary key.  Please set one explicitly with the -p option")
+    (key, datafile) = _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name))
+    aliases = []
+    if len(args.aliases):
+        for user_alias in args.aliases:
+            if user_alias in _SPECIAL_STATE:
+                sys.exit("Unable to save: Cannot create an alias which overwrites a reserved state key (%s)" % user_alias)
+            if _CURRENT_DATABASE.register_sa(args.primary_key, key, user_alias, args.force):
+                aliases.append(''+user_alias)
+        if not len(aliases):
+            sys.exit("Unable to save: None of the provided aliases were available")
+    hasher = sha256()
+    chunk = args.filename.read(4096)
+    while len(chunk):
+        hasher.update(chunk)
+        chunk = args.filename.read(4096)
+    args.filename.close()
+    hashalias = hasher.hexdigest()
+    _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias)
+    if args.primary_key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
+        del _CURRENT_DATABASE.state_keys[args.primary_key+":"+hashalias[:7]]
+    elif args.force or args.primary_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
+        _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias[:7], args.force)
+        aliases.append(hashalias[:7])
+    _CURRENT_DATABASE.save()
+    if infer:
+        print("Inferred primary key:", args.primary_key)
+    print("New state key:", key)
+    print("Aliases for this key:", aliases)
+
+def command_revert(args):
+    initdb()
+    infer = not bool(args.primary_key)
+    did_stash = False
+    if infer:
+        filepath = os.path.abspath(args.filename.name)
+        if filepath in _CURRENT_DATABASE.primary_keys:
+            args.primary_key = _CURRENT_DATABASE.resolve_key(filepath, True)
+        elif os.path.basename(filepath) in _CURRENT_DATABASE.primary_keys:
+            args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
+        else:
+            sys.exit("Unable to revert: Could not infer the primary key.  Please set one explicitly with the -p option")
+    if args.stash and not args.state == '~stash':
+        did_stash = True
+        if args.primary_key+":~stash" in _CURRENT_DATABASE.state_keys:
+            oldfile = _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"][2]
+            if oldfile in _CURRENT_DATABASE.primary_key[args.primary_key][2]:
+                _CURRENT_DATABASE.primary_key[args.primary_key][2].remove(oldfile)
+            del _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"]
+        _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name), '~stash')
+    if args.primary_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
+        sys.exit("Unable to revert: The requested state (%s) does not exist for this primary key (%s)" %(args.state, args.primary_key))
+    args.filename.close()
+    authoritative_key = _CURRENT_DATABASE.resolve_key(args.primary_key+":"+args.state, False)
+    statefile = _CURRENT_DATABASE.state_keys[authoritative_key][2]
+    copyfile(os.path.join(_CURRENT_DATABASE.primary_keys[args.primary_key][1], statefile), args.filename.name)
+    if infer:
+        print("Inferred primary key:", args.primary_key)
+    print("State key reverted to:", authoritative_key.replace(args.primary_key+":", '', 1))
+    if did_stash:
+        _CURRENT_DATABASE.save()
+        print("Old state saved to: ~stash")
+
 
 def main(args_input=sys.argv[1:]):
     parser = argparse.ArgumentParser(
@@ -137,7 +212,7 @@ def main(args_input=sys.argv[1:]):
         "and any user defined aliases. The following state keys are reserved for special use: "+str(_SPECIAL_STATE)+".\n"+
         "Returns the primary key (iff it was inferred), the new state key, and a list of aliases"
     )
-    save_parser.set_defaults(func=None)
+    save_parser.set_defaults(func=command_save)
     save_parser.add_argument(
         'filename',
         type=argparse.FileType('rb'),
@@ -172,7 +247,7 @@ def main(args_input=sys.argv[1:]):
         "Quicksave will attempt to infer the primary key if one is not provided explicitly.\n"+
         "Returns the primary key iff it was inferred and the authoritative state key reverted to"
     )
-    revert_parser.set_defaults(func=None)
+    revert_parser.set_defaults(func=command_revert)
     revert_parser.add_argument(
         'filename',
         type=read_write_file_exists,
@@ -280,7 +355,8 @@ def main(args_input=sys.argv[1:]):
         "To recover the ~trash *PRIMARY* key, use '$ quicksave recover [aliases...]'.\n"+
         "To recover the ~trash *STATE* key, use\n"+
         "'$ quicksave revert <filename> ~trash' then\n"+
-        "'$ quicksave save <filename>'.  Note that old aliases of the deleted state key will not be recovered, and must be set manually"
+        "'$ quicksave save <filename>'.  Note that old aliases of the deleted state key will not be recovered, and must be set manually",
+        dest='save'
     )
 
     lookup_parser = subparsers.add_parser(

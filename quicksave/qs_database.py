@@ -8,8 +8,6 @@ def reserve_name(base_name, existence_set):
         return base_name
     index = 1
     (rootfile, extension) = os.path.splitext(filename)
-    if len(extension):
-        extension = '.'+extension
     current_name = '%s_%d%s' %(rootfile, index, extension)
     while current_name in existence_set:
         index+=1
@@ -37,7 +35,6 @@ class Database:
                     ))
                 ):
             #initialize the database
-            print("INIT")
             configwriter = open(os.path.join(
                 self.base_dir,
                 '.db_config'
@@ -69,13 +66,13 @@ class Database:
                         None
                     ]
                 elif data[0] == 'SK':
-                    self.state_keys[data[2]+":"+data[1]] = [
+                    self.state_keys[data[1]] = [
                         None,
                         data[2],
                         data[3]
                     ]
                 elif data[0] == 'SA':
-                    self.state_keys[data[2]+":"+data[1]] = [
+                    self.state_keys[data[1]] = [
                         data[2],
                         data[3],
                         None
@@ -84,7 +81,7 @@ class Database:
     def register_pk(self, filename):
         (filepath, root_name) = os.path.split(filename)
         canonical = ''.join(char for char in root_name if char.isalnum())
-        data_folder = os.path.abspath(os.path.join(self.base_dir, reserve_name(canonical, self.data_folders)))
+        data_folder = os.path.abspath(os.path.join(self.base_dir, reserve_name(canonical, {os.path.basename(folder) for folder in self.data_folders})))
         os.makedirs(data_folder, exist_ok=True)
         self.data_folders.add(data_folder)
         key = make_key(canonical[:5]+"_PK", self.primary_keys)
@@ -106,9 +103,10 @@ class Database:
             return True
         return False
 
-    def register_sk(self, primarykey, filename):
+    def register_sk(self, primarykey, filepath, forcekey = False):
         if primarykey not in self.primary_keys:
             sys.exit("The provided primary key does not exist in this database (%s)"%primarykey)
+        filename =os.path.basename(filepath)
         primarykey = self.resolve_key(primarykey, True)
         canonical = ''.join(char for char in filename if char.isalnum() or char=='.')
         data_file = reserve_name(canonical, self.primary_keys[primarykey][2])
@@ -116,7 +114,9 @@ class Database:
             sk.replace(primarykey+':', '', 1)
             for sk in self.state_keys if self.state_keys[sk][1]==primarykey
         })
-        shutil.copyfile(os.path.abspath(filename), os.path.join(self.primary_keys[primarykey][1], data_file))
+        if forcekey:
+            key = forcekey
+        shutil.copyfile(os.path.abspath(filepath), os.path.join(self.primary_keys[primarykey][1], data_file))
         self.primary_keys[primarykey][2].add(data_file)
         self.state_keys[primarykey+":"+key] = [
             None,
@@ -125,10 +125,10 @@ class Database:
         ]
         return (key, data_file)
 
-    def register_sa(self, primarykey, key, alias):
+    def register_sa(self, primarykey, key, alias, overwrite=False):
         primarykey = self.resolve_key(primarykey, True)
         key = self.resolve_key(primarykey+":"+key, False).replace(primarykey+":", '', 1)
-        if primarykey in self.primary_keys and primarykey+':'+key in self.state_keys and self.state_keys[primarykey+':'+key][1]==primarykey and primarykey+":"+alias not in self.state_keys:
+        if primarykey in self.primary_keys and primarykey+':'+key in self.state_keys and self.state_keys[primarykey+':'+key][1]==primarykey and (overwrite or primarykey+":"+alias not in self.state_keys):
             self.state_keys[primarykey+":"+alias] =  [
                 primarykey+":"+key,
                 primarykey,
