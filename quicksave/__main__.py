@@ -30,6 +30,8 @@ def read_write_file_exists(argument):
 
 def initdb():
     global _CURRENT_DATABASE
+    database_path = ''
+    msg = "No database loaded.  Please run '$ quicksave init' to create or load a database"
     if os.path.isfile(configfile):
         reader = open(configfile)
         database_path = reader.read().strip()
@@ -38,14 +40,16 @@ def initdb():
             try:
                 _CURRENT_DATABASE = db(database_path)
             except FileNotFoundError:
-                sys.exit("Unable to open the database.  It may have been deleted, or the config file may have been manually edited. Run '$ quicksave init <databse path>' to resolve")
+                print("Bad database path:", database_path)
+                msg = "Unable to open the database.  It may have been deleted, or the config file may have been manually edited. Run '$ quicksave init <databse path>' to resolve"
             except:
                 sys.exit("The database is corrupted.  Use '$ quicksave init <database path>' and initialize a new database")
     if not _CURRENT_DATABASE:
         writer = open(configfile, mode='w')
         writer.write("<N/A>\n")
         writer.close()
-        sys.exit("No database loaded.  Please run '$ quicksave init' to create or load a database")
+        sys.exit(msg)
+    return database_path
 
 def command_init(args):
     writer = open(configfile, mode='w')
@@ -481,6 +485,12 @@ def main(args_input=sys.argv[1:]):
         "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
         "at least one must be unique or the operation will be canceled."
     )
+
+    show_parser = subparsers.add_parser(
+        'show',
+        description="Shows the current database path"
+    )
+    show_parser.set_defaults(func = lambda _:print(initdb()))
 
     args = parser.parse_args(args_input)
     if 'func' not in dir(args):
