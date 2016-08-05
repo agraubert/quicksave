@@ -1,22 +1,13 @@
 from setuptools import setup
 
 long_desc = "A (very) simple file versioning system"
-version = None
 
 import re
-try:
-    reader = open("README.rst", mode='r')
-    long_desc = reader.read()
-    version = re.search(r'\*\*Version:\*\* ([0-9\.a-zA-Z]*)', long_desc).group(1)
-    reader.close()
-except:
-    pass
 
-if not version:
-    reader = open("README.md", mode='r')
-    long_desc = reader.read()
-    version = re.search(r'__Version:__ ([0-9\.a-zA-Z]*)', long_desc).group(1)
-    reader.close()
+reader = open("README.md", mode='r')
+long_desc = reader.read()
+version = re.search(r'__Version:__ ([0-9\.a-zA-Z]*)', long_desc).group(1)
+reader.close()
 
 setup(
     name="quicksave",
