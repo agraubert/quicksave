@@ -10,7 +10,7 @@ except SystemError:
     sys.path.append(os.path.dirname(__file__))
     from qs_database import Database as db
 
-_SPECIAL_PRIMARY = ['~trash']
+_SPECIAL_file = ['~trash', '~last']
 _SPECIAL_STATE = ['~stash', '~trash']
 _CURRENT_DATABASE = None
 configfile = os.path.join(os.path.expanduser('~'), '.quicksave_config')
@@ -59,26 +59,26 @@ def command_init(args):
 def command_register(args):
     initdb()
     filepath = os.path.abspath(args.filename.name)
-    if filepath in _CURRENT_DATABASE.primary_keys and not args.ignore_filepath:
-        sys.exit("Unable to register: Filepath is registered to primary key %s (use --ignore-filepath to override this behavior)"%(
-            _CURRENT_DATABASE.primary_keys[filepath][0]
+    if filepath in _CURRENT_DATABASE.file_keys and not args.ignore_filepath:
+        sys.exit("Unable to register: Filepath is registered to file key %s (use --ignore-filepath to override this behavior)"%(
+            _CURRENT_DATABASE.file_keys[filepath][0]
         ))
-    (key, folder) = _CURRENT_DATABASE.register_pk(filepath)
-    if key in _SPECIAL_PRIMARY:
-        sys.exit("Unable to register: The provided filename overwrites a reserved primary key (%s)"%key)
-    aliases = []
-    if len(args.aliases):
-        for user_alias in args.aliases:
-            if user_alias in _SPECIAL_PRIMARY:
-                sys.exit("Unable to register: Cannot create an alias which overwrites a reserved primary key (%s)"%user_alias)
-            if _CURRENT_DATABASE.register_pa(key, user_alias):
-                aliases.append(''+user_alias)
-        if not len(aliases):
+    (key, folder) = _CURRENT_DATABASE.register_fk(filepath)
+    if key in _SPECIAL_file:
+        sys.exit("Unable to register: The provided filename overwrites a reserved file key (%s)"%key)
+    file_aliases = []
+    if len(args.file_alias):
+        for user_alias in args.file_alias:
+            if user_alias in _SPECIAL_file:
+                sys.exit("Unable to register: Cannot create a file alias which overwrites a reserved file key (%s)"%user_alias)
+            if _CURRENT_DATABASE.register_fa(key, user_alias):
+                file_aliases.append(''+user_alias)
+        if not len(file_aliases):
             sys.exit("Unable to register: None of the provided aliases were available")
-    if filepath not in _SPECIAL_PRIMARY and _CURRENT_DATABASE.register_pa(key, filepath):
-        aliases.append(filepath)
-    if os.path.basename(filepath) not in _SPECIAL_PRIMARY and _CURRENT_DATABASE.register_pa(key, os.path.basename(filepath)):
-        aliases.append(os.path.basename(filepath))
+    if filepath not in _SPECIAL_file and _CURRENT_DATABASE.register_fa(key, filepath):
+        file_aliases.append(filepath)
+    if os.path.basename(filepath) not in _SPECIAL_file and _CURRENT_DATABASE.register_fa(key, os.path.basename(filepath)):
+        file_aliases.append(os.path.basename(filepath))
     (statekey, datafile) = _CURRENT_DATABASE.register_sk(key, os.path.relpath(filepath))
     hasher = sha256()
     chunk = args.filename.read(4096)
@@ -88,35 +88,46 @@ def command_register(args):
     args.filename.close()
     hashalias = hasher.hexdigest()
     _CURRENT_DATABASE.register_sa(key, statekey, hashalias)
+    state_aliases = []
     if key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
         del _CURRENT_DATABASE.state_keys[key+":"+hashalias[:7]]
     else:
         _CURRENT_DATABASE.register_sa(key, statekey, hashalias[:7])
+        state_aliases.append(hashalias[:7])
+    if len(args.aliases):
+        for user_alias in args.aliases:
+            if user_alias in _SPECIAL_STATE:
+                sys.exit("Unable to register: Cannot create a state alias which overwrites a reserved state key (%s)" % user_alias)
+            if _CURRENT_DATABASE.register_sa(key, statekey, user_alias):
+                state_aliases.append(''+user_alias)
+        if not len(state_aliases):
+            sys.exit("Unable to save: None of the provided aliases were available")
     _CURRENT_DATABASE.save()
-    print("Registered new primary key:", key)
-    print("Aliases for this key:", aliases)
+    print("Registered new file key:", key)
+    print("Aliases for this file key:", file_aliases)
     print("Initial state key:", statekey)
+    print("Aliases for this state key:", state_aliases)
 
 def command_save(args):
     initdb()
-    infer = not bool(args.primary_key)
+    infer = not bool(args.file_key)
     if infer:
         filepath = os.path.abspath(args.filename.name)
-        if filepath in _CURRENT_DATABASE.primary_keys:
-            args.primary_key = _CURRENT_DATABASE.resolve_key(filepath, True)
-        elif os.path.basename(filepath) in _CURRENT_DATABASE.primary_keys:
-            args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
+        if filepath in _CURRENT_DATABASE.file_keys:
+            args.file_key = _CURRENT_DATABASE.resolve_key(filepath, True)
+        elif os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
+            args.file_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
-            sys.exit("Unable to save: Could not infer the primary key.  Please set one explicitly with the -p option")
-    if args.primary_key not in _CURRENT_DATABASE.primary_keys:
-        sys.exit("Unable to save: The requested primary key does not exist in this database (%s)" %(args.primary_key))
-    (key, datafile) = _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name))
+            sys.exit("Unable to save: Could not infer the file key.  Please set one explicitly with the -k option")
+    if args.file_key not in _CURRENT_DATABASE.file_keys:
+        sys.exit("Unable to save: The requested file key does not exist in this database (%s)" %(args.file_key))
+    (key, datafile) = _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name))
     aliases = []
     if len(args.aliases):
         for user_alias in args.aliases:
             if user_alias in _SPECIAL_STATE:
                 sys.exit("Unable to save: Cannot create an alias which overwrites a reserved state key (%s)" % user_alias)
-            if _CURRENT_DATABASE.register_sa(args.primary_key, key, user_alias, args.force):
+            if _CURRENT_DATABASE.register_sa(args.file_key, key, user_alias, args.force):
                 aliases.append(''+user_alias)
         if not len(aliases):
             sys.exit("Unable to save: None of the provided aliases were available")
@@ -127,64 +138,64 @@ def command_save(args):
         chunk = args.filename.read(4096)
     args.filename.close()
     hashalias = hasher.hexdigest()
-    if args.primary_key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
-        del _CURRENT_DATABASE.state_keys[args.primary_key+":"+hashalias[:7]]
-    elif args.primary_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
-        _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias[:7], args.force)
+    if args.file_key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
+        del _CURRENT_DATABASE.state_keys[args.file_key+":"+hashalias[:7]]
+    elif args.file_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
+        _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias[:7], args.force)
         aliases.append(hashalias[:7])
-    if args.primary_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
-        # print("The state of the current file matches a previously registered state for this primary key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
+    if args.file_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
+        # print("The state of the current file matches a previously registered state for this file key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
         sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
-            _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.primary_key+":"+hashalias][0], False).replace(args.primary_key+":", '', 1)
+            _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.file_key+":"+hashalias][0], False).replace(args.file_key+":", '', 1)
         ))
-    _CURRENT_DATABASE.register_sa(args.primary_key, key, hashalias)
+    _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias)
     _CURRENT_DATABASE.save()
     if infer:
-        print("Inferred primary key:", args.primary_key)
+        print("Inferred file key:", args.file_key)
     print("New state key:", key)
     print("Aliases for this key:", aliases)
 
 def command_revert(args):
     initdb()
-    infer = not bool(args.primary_key)
+    infer = not bool(args.file_key)
     did_stash = False
     if infer:
         filepath = os.path.abspath(args.filename.name)
-        if filepath in _CURRENT_DATABASE.primary_keys:
-            args.primary_key = _CURRENT_DATABASE.resolve_key(filepath, True)
-        elif os.path.basename(filepath) in _CURRENT_DATABASE.primary_keys:
-            args.primary_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
+        if filepath in _CURRENT_DATABASE.file_keys:
+            args.file_key = _CURRENT_DATABASE.resolve_key(filepath, True)
+        elif os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
+            args.file_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
-            sys.exit("Unable to revert: Could not infer the primary key.  Please set one explicitly with the -p option")
-    if args.primary_key not in _CURRENT_DATABASE.primary_keys:
-        sys.exit("Unable to revert: The requested primary key does not exist in this database (%s)" %(args.primary_key))
-    args.primary_key = _CURRENT_DATABASE.resolve_key(args.primary_key, True)
+            sys.exit("Unable to revert: Could not infer the file key.  Please set one explicitly with the -k option")
+    if args.file_key not in _CURRENT_DATABASE.file_keys:
+        sys.exit("Unable to revert: The requested file key does not exist in this database (%s)" %(args.file_key))
+    args.file_key = _CURRENT_DATABASE.resolve_key(args.file_key, True)
     if args.stash and not args.state == '~stash':
         did_stash = True
-        if args.primary_key+":~stash" in _CURRENT_DATABASE.state_keys:
-            oldfile = _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"][2]
-            if oldfile in _CURRENT_DATABASE.primary_keys[args.primary_key][2]:
-                _CURRENT_DATABASE.primary_keys[args.primary_key][2].remove(oldfile)
-            del _CURRENT_DATABASE.state_keys[args.primary_key+":~stash"]
+        if args.file_key+":~stash" in _CURRENT_DATABASE.state_keys:
+            oldfile = _CURRENT_DATABASE.state_keys[args.file_key+":~stash"][2]
+            if oldfile in _CURRENT_DATABASE.file_keys[args.file_key][2]:
+                _CURRENT_DATABASE.file_keys[args.file_key][2].remove(oldfile)
+            del _CURRENT_DATABASE.state_keys[args.file_key+":~stash"]
         hasher = sha256()
         chunk = args.filename.read(4096)
         while len(chunk):
             hasher.update(chunk)
             chunk = args.filename.read(4096)
         hashalias = hasher.hexdigest()
-        if args.primary_key+":"+hashalias in _CURRENT_DATABASE.state_keys:
-            _CURRENT_DATABASE.register_sa(args.primary_key, hashalias, '~stash', True)
+        if args.file_key+":"+hashalias in _CURRENT_DATABASE.state_keys:
+            _CURRENT_DATABASE.register_sa(args.file_key, hashalias, '~stash', True)
         else:
-            _CURRENT_DATABASE.register_sk(args.primary_key, os.path.abspath(args.filename.name), '~stash')
-    if args.primary_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
-        sys.exit("Unable to revert: The requested state (%s) does not exist for this primary key (%s)" %(args.state, args.primary_key))
+            _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name), '~stash')
+    if args.file_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
+        sys.exit("Unable to revert: The requested state (%s) does not exist for this file key (%s)" %(args.state, args.file_key))
     args.filename.close()
-    authoritative_key = _CURRENT_DATABASE.resolve_key(args.primary_key+":"+args.state, False)
+    authoritative_key = _CURRENT_DATABASE.resolve_key(args.file_key+":"+args.state, False)
     statefile = _CURRENT_DATABASE.state_keys[authoritative_key][2]
-    copyfile(os.path.join(_CURRENT_DATABASE.primary_keys[args.primary_key][1], statefile), args.filename.name)
+    copyfile(os.path.join(_CURRENT_DATABASE.file_keys[args.file_key][1], statefile), args.filename.name)
     if infer:
-        print("Inferred primary key:", args.primary_key)
-    print("State key reverted to:", authoritative_key.replace(args.primary_key+":", '', 1))
+        print("Inferred file key:", args.file_key)
+    print("State key reverted to:", authoritative_key.replace(args.file_key+":", '', 1))
     if did_stash:
         _CURRENT_DATABASE.save()
         print("Old state saved to: ~stash")
@@ -194,45 +205,45 @@ def command_alias(args):
 
 def command_list(args):
     initdb()
-    if not args.primary:
-        print("Showing all primary keys", "and aliases" if args.aliases else '')
+    if not args.filekey:
+        print("Showing all file keys", "and aliases" if args.aliases else '')
         print()
-        for key in _CURRENT_DATABASE.primary_keys:
-            isprimary = _CURRENT_DATABASE.primary_keys[key][0]
-            if not isprimary:
-                print('Primary Key: ' if args.aliases else '', key, sep='')
+        for key in _CURRENT_DATABASE.file_keys:
+            isfile = _CURRENT_DATABASE.file_keys[key][0]
+            if not isfile:
+                print('file Key: ' if args.aliases else '', key, sep='')
             elif args.aliases:
-                print("Primary Alias:", key, "(Alias of: %s)"%isprimary)
+                print("file Alias:", key, "(Alias of: %s)"%isfile)
     else:
-        if args.primary not in _CURRENT_DATABASE.primary_keys:
-            sys.exit("Unable to list: The requested primary key does not exist in this database (%s)" %(args.primary))
-        print("Showing all state keys", " and aliases" if args.aliases else '', " for primary key ", args.primary, sep='')
+        if args.filekey not in _CURRENT_DATABASE.file_keys:
+            sys.exit("Unable to list: The requested file key does not exist in this database (%s)" %(args.filekey))
+        print("Showing all state keys", " and aliases" if args.aliases else '', " for file key ", args.filekey, sep='')
         print()
-        args.primary = _CURRENT_DATABASE.resolve_key(args.primary, True)
+        args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
         for key in _CURRENT_DATABASE.state_keys:
-            if _CURRENT_DATABASE.state_keys[key][1] == args.primary:
-                isprimary = _CURRENT_DATABASE.state_keys[key][0]
-                display_key = key.replace(args.primary+":", '', 1)
-                if not isprimary:
+            if _CURRENT_DATABASE.state_keys[key][1] == args.filekey:
+                isfile = _CURRENT_DATABASE.state_keys[key][0]
+                display_key = key.replace(args.filekey+":", '', 1)
+                if not isfile:
                     print("State Key: " if args.aliases else '', display_key, sep='')
                 elif args.aliases:
-                    print("State Alias:", display_key, "(Alias of: %s)"%isprimary.replace(args.primary+":", '', 1))
+                    print("State Alias:", display_key, "(Alias of: %s)"%isfile.replace(args.filekey+":", '', 1))
 
 def command_delete(args):
     sys.exit("This command is not yet ready")
 
 def command_lookup(args):
     initdb()
-    if not (args.primary or args.target in _CURRENT_DATABASE.primary_keys):
-        sys.exit("Unable to lookup: The requested primary key does not exist in this database (%s)" %(args.primary))
-    if args.primary:
-        args.primary = _CURRENT_DATABASE.resolve_key(args.primary, True)
-    if args.primary and args.primary+":"+args.target not in _CURRENT_DATABASE.state_keys:
-        sys.exit("Unable to lookup: The requested state (%s) does not exist for this primary key (%s)" %(args.target, args.primary))
-    keyheader = args.primary+":" if args.primary else ''
-    result = _CURRENT_DATABASE.resolve_key(keyheader+args.target, not args.primary)
+    if not (args.filekey or args.target in _CURRENT_DATABASE.file_keys):
+        sys.exit("Unable to lookup: The requested file key does not exist in this database (%s)" %(args.filekey))
+    if args.filekey:
+        args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
+    if args.filekey and args.filekey+":"+args.target not in _CURRENT_DATABASE.state_keys:
+        sys.exit("Unable to lookup: The requested state (%s) does not exist for this file key (%s)" %(args.target, args.filekey))
+    keyheader = args.filekey+":" if args.filekey else ''
+    result = _CURRENT_DATABASE.resolve_key(keyheader+args.target, not args.filekey)
     if keyheader:
-        result = result.replace(args.primary+":", '', 1)
+        result = result.replace(args.filekey+":", '', 1)
     print(args.target, '-->', result)
 
 
@@ -264,54 +275,62 @@ def main(args_input=sys.argv[1:]):
     register_parser = subparsers.add_parser(
         'register',
         description="Registers a new file for versioning.  Different versions of a single\n"+
-        "file are grouped together by a few primary keys which distinguish the set from other files.\n"+
-        "A new unique primary key will be automatically generated, but this key can also be aliased by\n"+
+        "file are grouped together by a few file keys which distinguish the set from other files.\n"+
+        "A new unique file key will be automatically generated, but this key can also be aliased by\n"+
         "the original absolute filepath of the file, the original filename, and any user provided aliases.\n"+
-        "Note that the following primary keys are reserved for special use: "+str(_SPECIAL_PRIMARY)+".\n"+
-        "Returns the primary key and list of aliases for the new set of versions, and the initial state key for the starting version"
+        "Note that the following file keys are reserved for special use: "+str(_SPECIAL_file)+".\n"+
+        "Returns the file key and list of aliases for the new set of versions, and the initial state key for the starting version"
     )
     register_parser.set_defaults(func=command_register)
     register_parser.add_argument(
         'filename',
         type=argparse.FileType('rb'),
-        help="The file to save.  The filename and path will be used as aliases for the new primary key\n"+
-        "if they are not already aliases for a different primary key"
+        help="The file to save.  The filename and path will be used as aliases for the new file key\n"+
+        "if they are not already aliases for a different file key"
     )
     register_parser.add_argument(
         'aliases',
         nargs='*',
-        help="A list of user-defined aliases for the primary key.  Quotes must be used to surround any aliases containing spaces.\n"+
+        help="A list of user-defined aliases for the automatically generated state key.  Quotes must be used to surround any aliases containing spaces.\n"+
         "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
         "at least one must be unique or the operation will be canceled."
     )
     register_parser.add_argument(
         '--ignore-filepath',
         action='store_true',
-        help="Normally, register will halt if the file being registered matches the filepath of an existing primary key.\n"+
+        help="Normally, register will halt if the file being registered matches the filepath of an existing file key.\n"+
         "If --ignore-filepath is set, it will allow the file to be registered anyways"
+    )
+    register_parser.add_argument(
+        '-a', '--file-alias',
+        action='append',
+        help="Set an alias for the automatically generated file key.  This option may be provided multiple times to define multiple aliases.\n"+
+        "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
+        "at least one must be unique or the operation will be canceled.",
+        default=[]
     )
 
     save_parser = subparsers.add_parser(
         'save',
         description="Saves the current state of the file to the set of versions for this file.\n"+
-        "Quicksave will attempt to infer the primary key if one is not provided explicitly.\n"+
+        "Quicksave will attempt to infer the file key if one is not provided explicitly.\n"+
         "A new unique state key will be automatically generated, but this key can also be aliased by\n"+
-        "the sha-256 hash of the file contents (and just the first 7 characters iff that is unique under this primary key)\n"+
+        "the sha-256 hash of the file contents (and just the first 7 characters iff that is unique under this file key)\n"+
         "and any user defined aliases. The following state keys are reserved for special use: "+str(_SPECIAL_STATE)+".\n"+
-        "Returns the primary key (iff it was inferred), the new state key, and a list of aliases"
+        "Returns the file key (iff it was inferred), the new state key, and a list of aliases"
     )
     save_parser.set_defaults(func=command_save)
     save_parser.add_argument(
         'filename',
         type=argparse.FileType('rb'),
-        help="The file to save.  Iff the filename differs from the original filename for the primary key,\n"+
+        help="The file to save.  Iff the filename differs from the original filename for the file key,\n"+
         "it will be added as an alias to the new state key."
     )
     save_parser.add_argument(
-        '-p', '--primary-key',
-        help="The primary key linked to the set of states to save this file in.\n"+
-        "If the primary key is not specified it will be inferred by the full filepath or the filename (in that order).\n"+
-        "If neither the filepath nor the filename match any primary key aliases in this database,\n"+
+        '-k', '--file-key',
+        help="The file key linked to the set of states to save this file in.\n"+
+        "If the file key is not specified it will be inferred by the full filepath or the filename (in that order).\n"+
+        "If neither the filepath nor the filename match any file key aliases in this database,\n"+
         "quicksave will require the user to provide this option.",
         default=None
     )
@@ -319,7 +338,7 @@ def main(args_input=sys.argv[1:]):
         'aliases',
         nargs='*',
         help="A list of user-defined aliases for the current state.  Quotes must be used to surround any aliases containing spaces.\n"+
-        "Aliases must be unique under this primary key.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
+        "Aliases must be unique under this file key.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
         "at least one must be unique or the operation will be canceled."
     )
     save_parser.add_argument(
@@ -337,8 +356,8 @@ def main(args_input=sys.argv[1:]):
     revert_parser = subparsers.add_parser(
         'revert',
         description="Reverts the specified file to the state specified by the provided state key or alias.\n"+
-        "Quicksave will attempt to infer the primary key if one is not provided explicitly.\n"+
-        "Returns the primary key iff it was inferred and the authoritative state key reverted to"
+        "Quicksave will attempt to infer the file key if one is not provided explicitly.\n"+
+        "Returns the file key iff it was inferred and the authoritative state key reverted to"
     )
     revert_parser.set_defaults(func=command_revert)
     revert_parser.add_argument(
@@ -347,10 +366,10 @@ def main(args_input=sys.argv[1:]):
         help="The file to revert"
     )
     revert_parser.add_argument(
-        '-p', '--primary-key',
-        help="The primary key which contains the state being reverted to.\n"+
-        "If the primary key is not specified it will be inferred by the full filepath or the filename (in that order).\n"+
-        "If neither the filepath nor the filename match any primary key aliases in this database,\n"+
+        '-k', '--file-key',
+        help="The file key which contains the state being reverted to.\n"+
+        "If the file key is not specified it will be inferred by the full filepath or the filename (in that order).\n"+
+        "If neither the filepath nor the filename match any file key aliases in this database,\n"+
         "quicksave will require the user to provide this option.",
         default=None
     )
@@ -375,13 +394,13 @@ def main(args_input=sys.argv[1:]):
 
     alias_parser = subparsers.add_parser(
         'alias',
-        description="Create, override, or delete an alias for a primary or state key.\n"+
+        description="Create, override, or delete an alias for a file or state key.\n"+
         "The action taken by this command depends on the specific command syntax:\n"+
-        "'$ quicksave <link> <target>' creates or overwrites the primary key alias <link> to point to the primary key (or alias) <target>.\n"+
-        "'$ quicksave -d <link>' deletes the primary key alias <link>.  Cannot delete primary keys (only aliases).\n"+
-        "'$ quicksave <link> <target> <primary>' creates or overwrites the state key alias <link> to point to the state key (or alias) <target> under the primary key <primary>.\n"+
-        "'$ quicksave -d <link> <primary>' delets the state key alias <link> under the primary key <primary>.  Cannot delete state keys (only aliases).\n"+
-        "To delete authoritative primary or state keys, use '$ quicksave delete-key <primary key> [state key]'"
+        "'$ quicksave <link> <target>' creates or overwrites the file key alias <link> to point to the file key (or alias) <target>.\n"+
+        "'$ quicksave -d <link>' deletes the file key alias <link>.  Cannot delete file keys (only aliases).\n"+
+        "'$ quicksave <link> <target> <filekey>' creates or overwrites the state key alias <link> to point to the state key (or alias) <target> under the file key <file>.\n"+
+        "'$ quicksave -d <link> <filekey>' delets the state key alias <link> under the file key <filekey>.  Cannot delete state keys (only aliases).\n"+
+        "To delete authoritative file or state keys, use '$ quicksave delete-key <file key> [state key]'"
     )
     alias_parser.set_defaults(func=command_alias)
     alias_parser.add_argument(
@@ -395,26 +414,26 @@ def main(args_input=sys.argv[1:]):
         default=None
     )
     alias_parser.add_argument(
-        'primary',
+        'filekey',
         nargs='?',
-        help="The primary key (or alias) containing the desired state key (or alias) <target>",
+        help="The file key (or alias) containing the desired state key (or alias) <target>",
         default=None
     )
     alias_parser.add_argument(
         '-d',
         action='store_true',
-        help='Deletes the provided primary or state alias'
+        help='Deletes the provided file or state alias'
     )
 
     list_parser = subparsers.add_parser(
         'list',
-        description="Lists all primary keys in this database, or all state keys under a provided primary key (or alias)"
+        description="Lists all file keys in this database, or all state keys under a provided file key (or alias)"
     )
     list_parser.set_defaults(func=command_list)
     list_parser.add_argument(
-        'primary',
+        'filekey',
         nargs='?',
-        help="If provided, list all state keys under this primary key or alias",
+        help="If provided, list all state keys under this file key or alias",
         default=None
     )
     list_parser.add_argument(
@@ -425,28 +444,28 @@ def main(args_input=sys.argv[1:]):
 
     delete_parser = subparsers.add_parser(
         'delete-key',
-        description="Deletes a primary or state key, and all its aliases"
+        description="Deletes a file or state key, and all its aliases"
     )
     delete_parser.set_defaults(func=command_delete)
     delete_parser.add_argument(
-        'primary',
+        'filekey',
         nargs='?',
-        help="If provided, delete the state key <target> from within this primary key (or alias)",
+        help="If provided, delete the state key <target> from within this file key (or alias)",
         default=None
     )
     delete_parser.add_argument(
         'target',
-        help="The target primary or state key to delete.\n"+
-        "Iff <primary> is provided, then <target> is taken to be a state key, otherwise it is taken to be a primary key.\n"+
+        help="The target file or state key to delete.\n"+
+        "Iff <filekey> is provided, then <target> is taken to be a state key, otherwise it is taken to be a file key.\n"+
         "This *MUST* be an authoritative key, and not an alias.  Aliases can be deleted using the 'alias' command"
     )
     delete_parser.add_argument(
         '--no-save',
         action='store_false',
-        help="By default, deleted primary or state keys are saved under the ~trash key\n"+
-        "(which is a reserved primary key and a reserved state key under all primary keys).\n"+
+        help="By default, deleted file or state keys are saved under the ~trash key\n"+
+        "(which is a reserved file key and a reserved state key under all file keys).\n"+
         "~trash should not be used for permanent storage as it may be overwritten frequently.\n"+
-        "To recover the ~trash *PRIMARY* key, use '$ quicksave recover [aliases...]'.\n"+
+        "To recover the ~trash *file* key, use '$ quicksave recover [aliases...]'.\n"+
         "To recover the ~trash *STATE* key, use\n"+
         "'$ quicksave revert <filename> ~trash' then\n"+
         "'$ quicksave save <filename>'.  Note that old aliases of the deleted state key will not be recovered, and must be set manually",
@@ -455,27 +474,27 @@ def main(args_input=sys.argv[1:]):
 
     lookup_parser = subparsers.add_parser(
         'lookup',
-        description="Returns the authoritative primary or state key for a given alias"
+        description="Returns the authoritative file or state key for a given alias"
     )
     lookup_parser.set_defaults(func=command_lookup)
     lookup_parser.add_argument(
-        'primary',
+        'filekey',
         nargs='?',
-        help="If provided, lookup the state alias <target> from within this primary key (or alias)",
+        help="If provided, lookup the state alias <target> from within this file key (or alias)",
         default=None
     )
     lookup_parser.add_argument(
         'target',
-        help="The target primary or state alias to lookup.\n"+
-        "Iff <primary> is provided, then <target> is taken to be a state alias, otherwise it is taken to be a primary alias."
+        help="The target file or state alias to lookup.\n"+
+        "Iff <filekey> is provided, then <target> is taken to be a state alias, otherwise it is taken to be a file alias."
     )
 
     recover_parser = subparsers.add_parser(
         'recover',
-        description="Recovers the most recently deleted primary key.\n"+
+        description="Recovers the most recently deleted file key.\n"+
         "The recovered data will be saved under a uniquely generated key, but a list of aliases may also be provided.\n"+
         "Old aliases of the deleted key are not recovered, and must be set manually.\n"+
-        "Returns the new primary key and list of aliases, if provided"
+        "Returns the new file key and list of aliases, if provided"
     )
     recover_parser.set_defaults(func=command_recover)
     recover_parser.add_argument(
@@ -493,6 +512,7 @@ def main(args_input=sys.argv[1:]):
     show_parser.set_defaults(func = lambda _:print(initdb()))
 
     args = parser.parse_args(args_input)
+    print()
     if 'func' not in dir(args):
         parser.print_help()
         sys.exit(2)

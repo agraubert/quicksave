@@ -26,8 +26,8 @@ class Database:
     def __init__(self, base_dir):
         self.base_dir = base_dir
         self.data_folders = set() #a set of used data folders
-        self.primary_keys = {} #key: [None, data folder, set of data files] or alias: [authoriative key, None, None]
-        self.state_keys = {} #key: [None, primary key, data file] or alias: [authoriative key, primary key, None]
+        self.file_keys = {} #key: [None, data folder, set of data files] or alias: [authoriative key, None, None]
+        self.state_keys = {} #key: [None, file key, data file] or alias: [authoriative key, file key, None]
         if not (os.path.isdir(self.base_dir) and
                     os.path.isfile(os.path.join(
                         self.base_dir,
@@ -51,16 +51,16 @@ class Database:
                 raise ValueError("Unable to verify database")
             reader = csv.reader(configreader, delimiter='\t')
             for data in reader:
-                if data[0] == 'PK': #primary key
+                if data[0] == 'FK': #file key
                     data_folder = os.path.abspath(os.path.join(self.base_dir, data[2]))
-                    self.primary_keys[data[1]] = [
+                    self.file_keys[data[1]] = [
                         None,
                         data_folder,
                         {item for item in data[3:]}
                     ]
                     self.data_folders.add(data_folder)
-                elif data[0] == 'PA':
-                    self.primary_keys[data[1]] = [
+                elif data[0] == 'FA':
+                    self.file_keys[data[1]] = [
                         data[2],
                         None,
                         None
@@ -78,24 +78,24 @@ class Database:
                         None
                     ]
             configreader.close()
-    def register_pk(self, filename):
+    def register_fk(self, filename):
         (filepath, root_name) = os.path.split(filename)
         canonical = ''.join(char for char in root_name if char.isalnum())
         data_folder = os.path.abspath(os.path.join(self.base_dir, reserve_name(canonical, {os.path.basename(folder) for folder in self.data_folders})))
         os.makedirs(data_folder, exist_ok=True)
         self.data_folders.add(data_folder)
-        key = make_key(canonical[:5]+"_PK", self.primary_keys)
-        self.primary_keys[key] = [
+        key = make_key(canonical[:5]+"_FK", self.file_keys)
+        self.file_keys[key] = [
             None,
             data_folder,
             set()
         ]
         return (key, data_folder)
 
-    def register_pa(self, key, alias):
+    def register_fa(self, key, alias):
         key = self.resolve_key(key, True)
-        if key in self.primary_keys and alias not in self.primary_keys:
-            self.primary_keys[alias] = [
+        if key in self.file_keys and alias not in self.file_keys:
+            self.file_keys[alias] = [
                 key,
                 None,
                 None
@@ -103,35 +103,35 @@ class Database:
             return True
         return False
 
-    def register_sk(self, primarykey, filepath, forcekey = False):
-        if primarykey not in self.primary_keys:
-            sys.exit("The provided primary key does not exist in this database (%s)"%primarykey)
+    def register_sk(self, filekey, filepath, forcekey = False):
+        if filekey not in self.file_keys:
+            sys.exit("The provided file key does not exist in this database (%s)"%filekey)
         filename =os.path.basename(filepath)
-        primarykey = self.resolve_key(primarykey, True)
+        filekey = self.resolve_key(filekey, True)
         canonical = ''.join(char for char in filename if char.isalnum() or char=='.')
-        data_file = reserve_name(canonical, self.primary_keys[primarykey][2])
+        data_file = reserve_name(canonical, self.file_keys[filekey][2])
         key = make_key(canonical.replace('.','')[:5]+"_SK", {
-            sk.replace(primarykey+':', '', 1)
-            for sk in self.state_keys if self.state_keys[sk][1]==primarykey
+            sk.replace(filekey+':', '', 1)
+            for sk in self.state_keys if self.state_keys[sk][1]==filekey
         })
         if forcekey:
             key = forcekey
-        shutil.copyfile(os.path.abspath(filepath), os.path.join(self.primary_keys[primarykey][1], data_file))
-        self.primary_keys[primarykey][2].add(data_file)
-        self.state_keys[primarykey+":"+key] = [
+        shutil.copyfile(os.path.abspath(filepath), os.path.join(self.file_keys[filekey][1], data_file))
+        self.file_keys[filekey][2].add(data_file)
+        self.state_keys[filekey+":"+key] = [
             None,
-            primarykey,
+            filekey,
             data_file
         ]
         return (key, data_file)
 
-    def register_sa(self, primarykey, key, alias, overwrite=False):
-        primarykey = self.resolve_key(primarykey, True)
-        key = self.resolve_key(primarykey+":"+key, False).replace(primarykey+":", '', 1)
-        if primarykey in self.primary_keys and primarykey+':'+key in self.state_keys and self.state_keys[primarykey+':'+key][1]==primarykey and (overwrite or primarykey+":"+alias not in self.state_keys):
-            self.state_keys[primarykey+":"+alias] =  [
-                primarykey+":"+key,
-                primarykey,
+    def register_sa(self, filekey, key, alias, overwrite=False):
+        filekey = self.resolve_key(filekey, True)
+        key = self.resolve_key(filekey+":"+key, False).replace(filekey+":", '', 1)
+        if filekey in self.file_keys and filekey+':'+key in self.state_keys and self.state_keys[filekey+':'+key][1]==filekey and (overwrite or filekey+":"+alias not in self.state_keys):
+            self.state_keys[filekey+":"+alias] =  [
+                filekey+":"+key,
+                filekey,
                 None
             ]
             return True
@@ -144,12 +144,12 @@ class Database:
         ), mode='w')
         configwriter.write('<QUICKSAVE DB>\n')
         writer = csv.writer(configwriter, delimiter='\t', lineterminator='\n')
-        for key in self.primary_keys:
-            entry = self.primary_keys[key]
+        for key in self.file_keys:
+            entry = self.file_keys[key]
             if entry[0]:
-                writer.writerow(['PA', key, entry[0]])
+                writer.writerow(['FA', key, entry[0]])
             else:
-                writer.writerow(['PK', key, os.path.relpath(entry[1], self.base_dir)]+[item for item in entry[2]])
+                writer.writerow(['FK', key, os.path.relpath(entry[1], self.base_dir)]+[item for item in entry[2]])
         for key in self.state_keys:
             entry = self.state_keys[key]
             if entry[0]:
@@ -158,12 +158,12 @@ class Database:
                 writer.writerow(['SK', key, entry[1], entry[2]])
         configwriter.close()
 
-    def resolve_key(self, alias, primary):
-        if primary:
-            # print("PRIME>>",self.primary_keys)
+    def resolve_key(self, alias, isfile):
+        if isfile:
+            # print("PRIME>>",self.file_keys)
             current = alias
-            while self.primary_keys[current][0]:
-                current = self.primary_keys[current][0]
+            while self.file_keys[current][0]:
+                current = self.file_keys[current][0]
             return current
         else:
             # print("STATE>>",self.state_keys)
