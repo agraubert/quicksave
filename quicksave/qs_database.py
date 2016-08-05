@@ -92,9 +92,9 @@ class Database:
         ]
         return (key, data_folder)
 
-    def register_fa(self, key, alias):
+    def register_fa(self, key, alias, overwrite=False):
         key = self.resolve_key(key, True)
-        if key in self.file_keys and alias not in self.file_keys:
+        if key in self.file_keys and (overwrite or alias not in self.file_keys):
             self.file_keys[alias] = [
                 key,
                 None,

@@ -64,6 +64,7 @@ def command_register(args):
             _CURRENT_DATABASE.file_keys[filepath][0]
         ))
     (key, folder) = _CURRENT_DATABASE.register_fk(filepath)
+    _CURRENT_DATABASE.register_fa(key, '~last', True)
     if key in _SPECIAL_file:
         sys.exit("Unable to register: The provided filename overwrites a reserved file key (%s)"%key)
     file_aliases = []
@@ -122,6 +123,7 @@ def command_save(args):
     if args.file_key not in _CURRENT_DATABASE.file_keys:
         sys.exit("Unable to save: The requested file key does not exist in this database (%s)" %(args.file_key))
     (key, datafile) = _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name))
+    _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     aliases = []
     if len(args.aliases):
         for user_alias in args.aliases:
@@ -170,6 +172,7 @@ def command_revert(args):
     if args.file_key not in _CURRENT_DATABASE.file_keys:
         sys.exit("Unable to revert: The requested file key does not exist in this database (%s)" %(args.file_key))
     args.file_key = _CURRENT_DATABASE.resolve_key(args.file_key, True)
+    _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     if args.stash and not args.state == '~stash':
         did_stash = True
         if args.file_key+":~stash" in _CURRENT_DATABASE.state_keys:
@@ -202,6 +205,32 @@ def command_revert(args):
 
 def command_alias(args):
     sys.exit("This command is not yet ready")
+    initdb()
+    msg = ""
+    if not args.filekey: #working with file keys
+        if args.d:
+            if args.link not in _CURRENT_DATABASE.file_keys:
+                sys.exit("Unable to delete alias: The provided alias does not exist (%s)"%args.link)
+            result = _CURRENT_DATABASE.file_keys[args.link]
+            if not result[0]:
+                sys.exit("Unable to delete alias: The provided alias was a file key (%s).  Use '$ quicksave delete-key' to delete file keys"%(args.link))
+            del _CURRENT_DATABASE.file_keys[args.link]
+            _CURRENT_DATABASE.register_fa(result[0], '~last', True)
+            msg = "Deleted file alias: %s"%args.link
+        elif args.target:
+            if args.target not in _CURRENT_DATABASE.file_keys:
+                sys.exit("Unable to create alias: The provided target key does not exist (%s)"%args.target)
+            authoritative_key = _CURRENT_DATABASE.resolve_key(args.target, True)
+            _CURRENT_DATABASE.register_fa(authoritative_key, args.link, True)
+            _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
+            msg = "Registered file alias: %s --> %s"%(args.link, authoritative_key)
+    else:
+        if args.link not in _CURRENT_DATABASE.file_keys:
+            sys.exit("Unable to modify state alias table: Must provide a file key as first argument")
+        if args.d:
+            if not args.target:
+                sys.exit("Unable to delete alias: A target alias was not provided")
+
 
 def command_list(args):
     initdb()
