@@ -68,6 +68,7 @@ def command_init(args):
     writer = open(configfile, mode='w')
     writer.write(args.database_path+'\n')
     writer.close()
+    return args.database_path
 
 def command_register(args):
     initdb()
@@ -116,6 +117,7 @@ def command_register(args):
     print("Aliases for this file key:", file_aliases)
     print("Initial state key:", statekey)
     print("Aliases for this state key:", state_aliases)
+    return [key, [item for item in file_aliases], statekey, [item for item in state_aliases]]
 
 def command_save(args):
     initdb()
@@ -166,6 +168,7 @@ def command_save(args):
         print("Inferred file key:", args.file_key)
     print("New state key:", key)
     print("Aliases for this key:", aliases)
+    return [args.file_key, key, [item for item in aliases]]
 
 def command_revert(args):
     initdb()
@@ -211,6 +214,7 @@ def command_revert(args):
         print("Old state saved to: ~stash")
     _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     _CURRENT_DATABASE.save()
+    return [args.file_key, authoritative_key.replace(args.file_key+":", '', 1)]
 
 def command_alias(args):
     initdb()
@@ -278,6 +282,7 @@ def command_alias(args):
 
 def command_list(args):
     initdb()
+    output = []
     if not args.filekey:
         print("Showing all file keys", "and aliases" if args.aliases else '')
         print()
@@ -285,8 +290,10 @@ def command_list(args):
             isfile = _CURRENT_DATABASE.file_keys[key][0]
             if not isfile:
                 print('File Key: ' if args.aliases else '', key, sep='')
+                output.append(key)
             elif args.aliases:
                 print("File Alias:", key, "(Alias of: %s)"%isfile)
+                output.append(key)
     else:
         if args.filekey not in _CURRENT_DATABASE.file_keys:
             sys.exit("Unable to list: The requested file key does not exist in this database (%s)" %(args.filekey))
@@ -299,8 +306,11 @@ def command_list(args):
                 display_key = key.replace(args.filekey+":", '', 1)
                 if not isfile:
                     print("State Key: " if args.aliases else '', display_key, sep='')
+                    output.append(key)
                 elif args.aliases:
                     print("State Alias:", display_key, "(Alias of: %s)"%isfile.replace(args.filekey+":", '', 1))
+                    output.append(key)
+    return [item for item in output]
 
 def command_delete(args):
     initdb()
@@ -416,6 +426,7 @@ def command_lookup(args):
     if keyheader:
         result = result.replace(args.filekey+":", '', 1)
     print(args.target, '-->', result)
+    return result
 
 
 def command_recover(args):
@@ -1008,13 +1019,15 @@ def main(args_input=sys.argv[1:]):
     if 'func' not in dir(args):
         parser.print_help()
         sys.exit(2)
+    result = None
     try:
-        args.func(args)
+        result = args.func(args)
     except FileNotFoundError as e:
         raise FileNotFoundError("Command failed!  Unable to open a requested file. "+
                                 " Try running `$ quicksave clean -w` to clean the database") from e
     except Exception as e:
         raise RuntimeError("Command failed!  Encountered an unknown exception!") from e
+    return result
 
 
 if __name__ == '__main__':
