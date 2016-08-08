@@ -122,6 +122,18 @@ def command_save(args):
             sys.exit("Unable to save: Could not infer the file key.  Please set one explicitly with the -k option")
     if args.file_key not in _CURRENT_DATABASE.file_keys:
         sys.exit("Unable to save: The requested file key does not exist in this database (%s)" %(args.file_key))
+    hasher = sha256()
+    chunk = args.filename.read(4096)
+    while len(chunk):
+        hasher.update(chunk)
+        chunk = args.filename.read(4096)
+    args.filename.close()
+    hashalias = hasher.hexdigest()
+    if args.file_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
+        # print("The state of the current file matches a previously registered state for this file key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
+        sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
+            _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.file_key+":"+hashalias][0], False).replace(args.file_key+":", '', 1)
+        ))
     (key, datafile) = _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name))
     _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     aliases = []
@@ -133,23 +145,11 @@ def command_save(args):
                 aliases.append(''+user_alias)
         if not len(aliases):
             sys.exit("Unable to save: None of the provided aliases were available")
-    hasher = sha256()
-    chunk = args.filename.read(4096)
-    while len(chunk):
-        hasher.update(chunk)
-        chunk = args.filename.read(4096)
-    args.filename.close()
-    hashalias = hasher.hexdigest()
     if args.file_key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
         del _CURRENT_DATABASE.state_keys[args.file_key+":"+hashalias[:7]]
     elif args.file_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
         _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias[:7], args.force)
         aliases.append(hashalias[:7])
-    if args.file_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
-        # print("The state of the current file matches a previously registered state for this file key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
-        sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
-            _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.file_key+":"+hashalias][0], False).replace(args.file_key+":", '', 1)
-        ))
     _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias)
     _CURRENT_DATABASE.save()
     if infer:
