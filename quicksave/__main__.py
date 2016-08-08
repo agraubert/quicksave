@@ -232,7 +232,9 @@ def command_alias(args):
             if not args.target:
                 sys.exit("Unable to delete alias: A file key must be provided as the second argument")
             if args.target not in _CURRENT_DATABASE.file_keys:
-                sys.exit("Unable to delete alias: The provided file key does not exist (%s)"%args.filekey)
+                sys.exit("Unable to delete alias: The provided file key does not exist (%s)"%args.target)
+            if args.filekey:
+                sys.exit("Unable to delete alias: Unexpected argument: %s"%args.filekey)
             filekey = _CURRENT_DATABASE.resolve_key(args.target, True)
             if filekey+":"+args.link not in _CURRENT_DATABASE.state_keys:
                 sys.exit("Unable to delete alias: The provided state alias does not exist (%s)"%args.link)
