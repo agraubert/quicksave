@@ -221,6 +221,8 @@ def command_alias(args):
                 sys.exit("Unable to create alias: The provided target key does not exist (%s)"%args.target)
             if args.link in _CURRENT_DATABASE.file_keys and not _CURRENT_DATABASE.file_keys[args.link][0]:
                 sys.exit("Unable to create alias: The provided alias name is already in use by a file key (%s)"%args.link)
+            if args.link in _SPECIAL_FILE:
+                sys.exit("Unable to create alias: The requested alias overwrites a reserved file key (%s)"%args.link)
             authoritative_key = _CURRENT_DATABASE.resolve_key(args.target, True)
             _CURRENT_DATABASE.register_fa(authoritative_key, args.link, True)
             _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
@@ -248,6 +250,8 @@ def command_alias(args):
             filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
             if filekey+":"+args.target not in _CURRENT_DATABASE.state_keys:
                 sys.exit("Unable to create alias: The provided state key does not exist (%s)"%args.target)
+            if args.link in _SPECIAL_STATE:
+                sys.exit("Unable to create alias: The requested alias overwrites a reserved state key (%s)"%args.link)
             statekey = _CURRENT_DATABASE.resolve_key(filekey+":"+args.target, False)
             if filekey+":"+args.link in _CURRENT_DATABASE.state_keys and not _CURRENT_DATABASE.state_keys[filekey+":"+args.link][0]:
                 sys.exit("Unable to create alias: The provided alias name is already in use by a state key (%s)"%args.link)
@@ -267,9 +271,9 @@ def command_list(args):
         for key in _CURRENT_DATABASE.file_keys:
             isfile = _CURRENT_DATABASE.file_keys[key][0]
             if not isfile:
-                print('file Key: ' if args.aliases else '', key, sep='')
+                print('File Key: ' if args.aliases else '', key, sep='')
             elif args.aliases:
-                print("file Alias:", key, "(Alias of: %s)"%isfile)
+                print("File Alias:", key, "(Alias of: %s)"%isfile)
     else:
         if args.filekey not in _CURRENT_DATABASE.file_keys:
             sys.exit("Unable to list: The requested file key does not exist in this database (%s)" %(args.filekey))
@@ -298,6 +302,8 @@ def command_delete(args):
             sys.exit("Unable to delete key: The provided file key does not exist in this database (%s)"%args.target)
         if _CURRENT_DATABASE.file_keys[args.target][0]:
             sys.exit("Unable to delete key: The provided file key was an alias.  Use '$ quicksave alias -d <file alias>' to delete")
+        if args.target == '~trash':
+            sys.exit("Unable to directly delete ~trash keys.  Use '$ quicksave clean -t' to clean all ~trash keys")
         if args.save and '~trash' in _CURRENT_DATABASE.file_keys:
             rmtree(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
@@ -344,6 +350,8 @@ def command_delete(args):
             sys.exit("Unable to delete key: The provided state key does not exist in this database (%s)"%args.target)
         if _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target][0]:
             sys.exit("Unable to delete key: The provided state key was an alias.  Use '$ quicksave alias -d <state alias> <file key>' to delete a state alias")
+        if args.target == '~trash':
+            sys.exit("Unable to directly delete ~trash keys.  Use '$ quicksave clean -t' to clean all ~trash keys")
         if args.save and authoritative_key+":~trash" in _CURRENT_DATABASE.state_keys:
             os.remove(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
@@ -381,7 +389,9 @@ def command_delete(args):
 def command_lookup(args):
     initdb()
     if not (args.filekey or args.target in _CURRENT_DATABASE.file_keys):
-        sys.exit("Unable to lookup: The requested file key does not exist in this database (%s)" %(args.filekey))
+        sys.exit("Unable to lookup: The requested file key does not exist in this database (%s)" %(
+            args.filekey if args.filekey else args.target
+        ))
     if args.filekey:
         args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
     if args.filekey and args.filekey+":"+args.target not in _CURRENT_DATABASE.state_keys:
@@ -569,7 +579,8 @@ def main(args_input=sys.argv[1:]):
         nargs='*',
         help="A list of user-defined aliases for the automatically generated state key.  Quotes must be used to surround any aliases containing spaces.\n"+
         "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
-        "at least one must be unique or the operation will be canceled."
+        "at least one must be unique or the operation will be canceled.",
+        default = []
     )
     register_parser.add_argument(
         '--ignore-filepath',
@@ -791,10 +802,11 @@ def main(args_input=sys.argv[1:]):
     helper['recover'] = recover_parser.print_help
     recover_parser.add_argument(
         'aliases',
-        nargs="+",
+        nargs="?",
         help="A list of user-defined aliases for the recovered key.  Quotes must be used to surround any aliases containing spaces.\n"+
         "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
-        "at least one must be unique or the operation will be canceled."
+        "at least one must be unique or the operation will be canceled.",
+        default = []
     )
 
     show_parser = subparsers.add_parser(
@@ -841,7 +853,6 @@ def main(args_input=sys.argv[1:]):
     )
 
     args = parser.parse_args(args_input)
-    print()
     if 'func' not in dir(args):
         parser.print_help()
         sys.exit(2)
