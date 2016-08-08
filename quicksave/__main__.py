@@ -6,7 +6,7 @@ from hashlib import sha256
 
 try:
     from .qs_database import Database as db
-except SystemError:
+except ImportError:
     sys.path.append(os.path.dirname(__file__))
     from qs_database import Database as db
 
@@ -394,7 +394,40 @@ def command_lookup(args):
 
 
 def command_recover(args):
-    sys.exit("This command is not yet ready")
+    try:
+        from .qs_database import make_key
+    except SystemError:
+        from qs_database import make_key
+    initdb()
+    if '~trash' not in _CURRENT_DATABASE.file_keys:
+        sys.exit("Unable to recover: There is no data stored in the ~trash file key")
+    entry = [item for item in _CURRENT_DATABASE.file_keys['~trash']]
+    filekey = make_key(os.path.basename(entry[1])[:5]+"_FK", _CURRENT_DATABASE.file_keys)
+    _CURRENT_DATABASE.file_keys[filekey] = [item for item in entry]
+    aliases = []
+    for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0]=='~trash']:
+        _CURRENT_DATABASE.file_keys[key][1] = filekey
+        aliases.append(key)
+    if len(args.aliases):
+        for user_alias in args.aliases:
+            if user_alias in _SPECIAL_FILE:
+                sys.exit("Unable to recover: Cannot create a file alias which overwrites a reserved file key (%s)"%user_alias)
+            if _CURRENT_DATABASE.register_fa(filekey, user_alias):
+                aliases.append(''+user_alias)
+        if not len(aliases):
+            sys.exit("Unable to recover: None of the provided aliases were available")
+    for key in [key for key in _CURRENT_DATABASE.state_keys if key.startswith("~trash:")]:
+        entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
+        entry[1] = entry[1].replace('~trash', filekey, 1)
+        if entry[0]:
+            entry[0] = entry[0].replace('~trash', filekey, 1)
+        _CURRENT_DATABASE.state_keys[key.replace('~trash', filekey, 1)] = [item for item in entry]
+        del _CURRENT_DATABASE.state_keys[key]
+    del _CURRENT_DATABASE.file_keys['~trash']
+    _CURRENT_DATABASE.register_fa(filekey, '~last', True)
+    _CURRENT_DATABASE.save()
+    print("Recovered file key:", filekey)
+    print("Aliases for this file key:", aliases)
 
 def command_clean(args):
     sys.exit("This command is not yet ready")
@@ -610,10 +643,11 @@ def main(args_input=sys.argv[1:]):
     delete_parser.add_argument(
         '--no-save',
         action='store_false',
-        help="By default, deleted file or state keys are saved under the ~trash key\n"+
-        "(which is a reserved file key and a reserved state key under all file keys).\n"+
+        help="By default, the most recently deleted file or state key is saved under the ~trash key\n"+
+        "(which is a reserved file key as well as a reserved state key under all file keys).\n"+
+        "Using the --no-save option disables this behavior, however the deleted key will be immediately and irrecoverably lost.\n"+
         "~trash should not be used for permanent storage as it may be overwritten frequently.\n"+
-        "To recover the ~trash *file* key, use '$ quicksave recover [aliases...]'.\n"+
+        "To recover the ~trash *FILE* key, use '$ quicksave recover'.\n"+
         "To recover the ~trash *STATE* key, use\n"+
         "'$ quicksave revert <filename> ~trash' then\n"+
         "'$ quicksave save <filename>'.  Note that old aliases of the deleted state key will not be recovered, and must be set manually",
@@ -649,7 +683,8 @@ def main(args_input=sys.argv[1:]):
         description="Recovers the most recently deleted file key.\n"+
         "The recovered data will be saved under a uniquely generated key, but a list of aliases may also be provided.\n"+
         "Old aliases of the deleted key are not recovered, and must be set manually.\n"+
-        "Returns the new file key and list of aliases, if provided"
+        "Aliases applied to the ~trash key *WILL* be migrated over to the recovered key.\n"
+        "Returns the new file key and list of aliases for the key"
     )
     recover_parser.set_defaults(func=command_recover)
     recover_parser.add_argument(
