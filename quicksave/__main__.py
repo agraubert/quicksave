@@ -1,7 +1,7 @@
 import argparse
 import os
 import sys
-from shutil import copyfile
+from shutil import copyfile, rmtree
 from hashlib import sha256
 
 try:
@@ -212,14 +212,14 @@ def command_alias(args):
                 sys.exit("Unable to delete alias: The provided file alias does not exist (%s)"%args.link)
             result = _CURRENT_DATABASE.file_keys[args.link]
             if not result[0]:
-                sys.exit("Unable to delete alias: The provided alias was a file key (%s).  Use '$ quicksave delete-key' to delete file keys"%(args.link))
+                sys.exit("Unable to delete alias: The provided alias was a file key (%s).  Use '$ quicksave delete-key <file key>' to delete file keys"%(args.link))
             del _CURRENT_DATABASE.file_keys[args.link]
             _CURRENT_DATABASE.register_fa(result[0], '~last', True)
             msg = "Deleted file alias: %s"%args.link
         elif args.target:
             if args.target not in _CURRENT_DATABASE.file_keys:
                 sys.exit("Unable to create alias: The provided target key does not exist (%s)"%args.target)
-            if args.link in _CURRENT_DATABASE.file_keys and _CURRENT_DATABASE.file_keys[args.link]:
+            if args.link in _CURRENT_DATABASE.file_keys and not _CURRENT_DATABASE.file_keys[args.link][0]:
                 sys.exit("Unable to create alias: The provided alias name is already in use by a file key (%s)"%args.link)
             authoritative_key = _CURRENT_DATABASE.resolve_key(args.target, True)
             _CURRENT_DATABASE.register_fa(authoritative_key, args.link, True)
@@ -236,9 +236,10 @@ def command_alias(args):
                 sys.exit("Unable to delete alias: The provided state alias does not exist (%s)"%args.link)
             result = _CURRENT_DATABASE.state_keys[filekey+":"+args.link]
             if not result[0]:
-                sys.exit("Unable to delete alias: The provided alias was a state key (%s).  Use '$ quicksave delete-key' to delete state keys"%(args.link))
+                sys.exit("Unable to delete alias: The provided alias was a state key (%s).  Use '$ quicksave delete-key <file key> <state key>' to delete state keys"%(args.link))
             del _CURRENT_DATABASE.state_keys[filekey+":"+args.link]
-            msg = "Deleted state alias: %s"%args.link
+            msg = "Deleted state alias: %s from file key %s"%(args.link, filekey)
+            _CURRENT_DATABASE.register_fa(filekey, '~last', True)
         else:
             if not args.filekey:
                 sys.exit("Unable to create state alias: A file key or alias was not provided")
@@ -252,7 +253,7 @@ def command_alias(args):
                 sys.exit("Unable to create alias: The provided alias name is already in use by a state key (%s)"%args.link)
             _CURRENT_DATABASE.register_sa(filekey, statekey.replace(filekey+":", '', 1), args.link, True)
             _CURRENT_DATABASE.register_fa(filekey, '~last', True)
-            msg = "Registered state alias: %s --> %s\nAuthoritative file key: %s"%(args.link, statekey, filekey)
+            msg = "Registered state alias: %s --> %s under file key: %s"%(args.link, statekey.replace(filekey+":", '', 1), filekey)
     print(msg)
     _CURRENT_DATABASE.save()
 
@@ -285,7 +286,97 @@ def command_list(args):
                     print("State Alias:", display_key, "(Alias of: %s)"%isfile.replace(args.filekey+":", '', 1))
 
 def command_delete(args):
-    sys.exit("This command is not yet ready")
+    initdb()
+    if not args.filekey:
+        #when deleting a file key:
+        #   - Remove the data folder for the current ~trash entry
+        #   - Remove any file aliases to ~trash
+        #   - Remove all state keys and aliases under ~trash
+        #   - Unregister all file aliases
+        #   - Update all state keys and aliases to point to ~trash:<key>
+        if args.target not in _CURRENT_DATABASE.file_keys:
+            sys.exit("Unable to delete key: The provided file key does not exist in this database (%s)"%args.target)
+        if _CURRENT_DATABASE.file_keys[args.target][0]:
+            sys.exit("Unable to delete key: The provided file key was an alias.  Use '$ quicksave alias -d <file alias>' to delete")
+        if args.save and '~trash' in _CURRENT_DATABASE.file_keys:
+            rmtree(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                _CURRENT_DATABASE.file_keys['~trash'][1]
+            ))
+            if args.clean_aliases:
+                for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0]=='~trash']:
+                    del _CURRENT_DATABASE.file_keys[key]
+            for key in [key for key in _CURRENT_DATABASE.state_keys if key.startswith('~trash')]:
+                del _CURRENT_DATABASE.state_keys[key]
+            del _CURRENT_DATABASE.file_keys['~trash']
+        for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0]==args.target]:
+            del _CURRENT_DATABASE.file_keys[key]
+        for key in [key for key in _CURRENT_DATABASE.state_keys if key.startswith(args.target+":")]:
+            if args.save:
+                entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
+                entry[1] = entry[1].replace(args.target, '~trash', 1)
+                if entry[0]:
+                    entry[0] = entry[0].replace(args.target, '~trash', 1)
+                _CURRENT_DATABASE.state_keys[key.replace(args.target, '~trash', 1)] = [item for item in entry]
+            del _CURRENT_DATABASE.state_keys[key]
+        if args.save:
+            _CURRENT_DATABASE.file_keys['~trash'] = [item for item in _CURRENT_DATABASE.file_keys[args.target]]
+        else:
+            rmtree(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                _CURRENT_DATABASE.file_keys[args.target][1]
+            ))
+        del _CURRENT_DATABASE.file_keys[args.target]
+        _CURRENT_DATABASE.save()
+        print("Deleted file key: %s"%args.target)
+        if args.save:
+            print("File data saved to ~trash")
+
+    else:
+        #when deleting a state key:
+        #   - Remove the datafile (and entry in the parent file key) for the current ~trash entry
+        #   - Remove any state aliases to ~trash (-c)
+        #   - Unregister all state aliases
+        if args.filekey not in _CURRENT_DATABASE.file_keys:
+            sys.exit("Unable to delete key: The provided file key does not exist in this database (%s)"%args.filekey)
+        authoritative_key = _CURRENT_DATABASE.resolve_key(args.filekey, True)
+        if authoritative_key+":"+args.target not in _CURRENT_DATABASE.state_keys:
+            sys.exit("Unable to delete key: The provided state key does not exist in this database (%s)"%args.target)
+        if _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target][0]:
+            sys.exit("Unable to delete key: The provided state key was an alias.  Use '$ quicksave alias -d <state alias> <file key>' to delete a state alias")
+        if args.save and authoritative_key+":~trash" in _CURRENT_DATABASE.state_keys:
+            os.remove(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                _CURRENT_DATABASE.file_keys[authoritative_key][1],
+                _CURRENT_DATABASE.state_keys[authoritative_key+":~trash"][2]
+            ))
+            _CURRENT_DATABASE.file_keys[authoritative_key][2].remove(
+                _CURRENT_DATABASE.state_keys[authoritative_key+":~trash"][2]
+            )
+            if args.clean_aliases:
+                for key in [key for key in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[key][0]==authoritative_key+":~trash"]:
+                    del _CURRENT_DATABASE.state_keys[key]
+            del _CURRENT_DATABASE.state_keys[authoritative_key+":~trash"]
+        for key in [key for key in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[key][0]==authoritative_key+":"+args.target]:
+            del _CURRENT_DATABASE.state_keys[key]
+        if args.save:
+            _CURRENT_DATABASE.state_keys[authoritative_key+":~trash"] = [item for item in _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target]]
+        else:
+            os.remove(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                _CURRENT_DATABASE.file_keys[authoritative_key][1],
+                _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target][2]
+            ))
+            _CURRENT_DATABASE.file_keys[authoritative_key][2].remove(
+                _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target][2]
+            )
+        del _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target]
+        _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
+        _CURRENT_DATABASE.save()
+        print("Deleted state key: %s (File key: %s)"%(args.target, authoritative_key))
+        if args.save:
+            print("State data saved to ~trash")
+
 
 def command_lookup(args):
     initdb()
@@ -527,6 +618,13 @@ def main(args_input=sys.argv[1:]):
         "'$ quicksave revert <filename> ~trash' then\n"+
         "'$ quicksave save <filename>'.  Note that old aliases of the deleted state key will not be recovered, and must be set manually",
         dest='save'
+    )
+    delete_parser.add_argument(
+        '-c', '--clean-aliases',
+        action='store_true',
+        help="If saving a deleted key to ~trash (ie: this option only applies if "+
+        "the --no-save option is NOT provided) remove all file aliases that have "+
+        "been made to point to ~trash"
     )
 
     lookup_parser = subparsers.add_parser(
