@@ -514,6 +514,15 @@ def command_clean(args):
     _CURRENT_DATABASE.save()
     print(msg[:-1])
 
+def command_help(args, helper):
+    if not args.subcommand:
+        helper['__main__']()
+        print("\nUse '$ quicksave help <subcommand>' for help with a specific subcommand")
+    elif args.subcommand =='__main__' or args.subcommand not in helper:
+        sys.exit("Unknown subcommand name: %s"%args.subcommand)
+    else:
+        helper[args.subcommand]()
+
 def main(args_input=sys.argv[1:]):
     parser = argparse.ArgumentParser(
         "quicksave",
@@ -521,6 +530,7 @@ def main(args_input=sys.argv[1:]):
         " maintaining a few versions of a file without setting up a full version control repository",
     )
     subparsers = parser.add_subparsers()
+    helper = {'__main__':parser.print_help}
 
     init_parser = subparsers.add_parser(
         'init', aliases=['load-db'],
@@ -529,6 +539,8 @@ def main(args_input=sys.argv[1:]):
         "If the path does exist, attempt to load an existing database"
     )
     init_parser.set_defaults(func=command_init)
+    helper['init'] = init_parser.print_help
+    helper['load-db'] = init_parser.print_help
     init_parser.add_argument(
         'database_path',
         type=check_is_directory,
@@ -545,6 +557,7 @@ def main(args_input=sys.argv[1:]):
         "Returns the file key and list of aliases for the new set of versions, and the initial state key for the starting version"
     )
     register_parser.set_defaults(func=command_register)
+    helper['register'] = register_parser.print_help
     register_parser.add_argument(
         'filename',
         type=argparse.FileType('rb'),
@@ -583,6 +596,7 @@ def main(args_input=sys.argv[1:]):
         "Returns the file key (iff it was inferred), the new state key, and a list of aliases"
     )
     save_parser.set_defaults(func=command_save)
+    helper['save'] = save_parser.print_help
     save_parser.add_argument(
         'filename',
         type=argparse.FileType('rb'),
@@ -623,6 +637,7 @@ def main(args_input=sys.argv[1:]):
         "Returns the file key iff it was inferred and the authoritative state key reverted to"
     )
     revert_parser.set_defaults(func=command_revert)
+    helper['revert'] = revert_parser.print_help
     revert_parser.add_argument(
         'filename',
         type=argparse.FileType('rb'),#read_write_file_exists,
@@ -666,6 +681,7 @@ def main(args_input=sys.argv[1:]):
         "To delete authoritative file or state keys, use '$ quicksave delete-key <file key> [state key]'"
     )
     alias_parser.set_defaults(func=command_alias)
+    helper['alias'] = alias_parser.print_help
     alias_parser.add_argument(
         "link",
         help="The alias to create, overwrite, or delete."
@@ -693,6 +709,7 @@ def main(args_input=sys.argv[1:]):
         description="Lists all file keys in this database, or all state keys under a provided file key (or alias)"
     )
     list_parser.set_defaults(func=command_list)
+    helper['list'] = list_parser.print_help
     list_parser.add_argument(
         'filekey',
         nargs='?',
@@ -710,6 +727,7 @@ def main(args_input=sys.argv[1:]):
         description="Deletes a file or state key, and all its aliases"
     )
     delete_parser.set_defaults(func=command_delete)
+    helper['delete-key'] = delete_parser.print_help
     delete_parser.add_argument(
         'filekey',
         nargs='?',
@@ -748,6 +766,7 @@ def main(args_input=sys.argv[1:]):
         description="Returns the authoritative file or state key for a given alias"
     )
     lookup_parser.set_defaults(func=command_lookup)
+    helper['lookup'] = lookup_parser.print_help
     lookup_parser.add_argument(
         'filekey',
         nargs='?',
@@ -769,6 +788,7 @@ def main(args_input=sys.argv[1:]):
         "Returns the new file key and list of aliases for the key"
     )
     recover_parser.set_defaults(func=command_recover)
+    helper['recover'] = recover_parser.print_help
     recover_parser.add_argument(
         'aliases',
         nargs="+",
@@ -782,6 +802,7 @@ def main(args_input=sys.argv[1:]):
         description="Shows the current database path"
     )
     show_parser.set_defaults(func = lambda _:print(initdb()))
+    helper['show'] = show_parser.print_help
 
     clean_parser = subparsers.add_parser(
         'clean',
@@ -789,6 +810,7 @@ def main(args_input=sys.argv[1:]):
         "If no flags are set, this is a no-op. Each flag enables a different stage of cleaning"
     )
     clean_parser.set_defaults(func=command_clean)
+    helper['clean'] = clean_parser.print_help
     clean_parser.add_argument(
         '-t', '--trash',
         action='store_true',
@@ -803,6 +825,19 @@ def main(args_input=sys.argv[1:]):
         "a file under the same file key. Removes all but one state key from each "+
         "set of duplicates, and updates all aliases of the deleted keys to point "+
         "to the remaining state key."
+    )
+
+    help_parser = subparsers.add_parser(
+        'help',
+        description="Displays help about quicksave and its subcommands"
+    )
+    help_parser.set_defaults(func=lambda args:command_help(args, helper))
+    helper['help'] = help_parser.print_help
+    help_parser.add_argument(
+        'subcommand',
+        nargs='?',
+        help="The subcommand whose help message should be displayed",
+        default = None
     )
 
     args = parser.parse_args(args_input)
