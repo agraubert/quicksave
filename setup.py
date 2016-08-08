@@ -21,7 +21,7 @@ setup(
         ]
     },
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 5 - Production/Stable',
 
         'Topic :: Utilities',
 

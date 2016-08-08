@@ -2,4 +2,4 @@
 
 A (very) simple file versioning system
 
-__Version:__ 0.0.1a
+__Version:__ 1.0.0
