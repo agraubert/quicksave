@@ -201,7 +201,7 @@ def command_revert(args):
     print("State key reverted to:", authoritative_key.replace(args.file_key+":", '', 1))
     if did_stash:
         print("Old state saved to: ~stash")
-    _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
+    _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     _CURRENT_DATABASE.save()
 
 def command_alias(args):
