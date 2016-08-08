@@ -171,6 +171,8 @@ def command_revert(args):
             sys.exit("Unable to revert: Could not infer the file key.  Please set one explicitly with the -k option")
     if args.file_key not in _CURRENT_DATABASE.file_keys:
         sys.exit("Unable to revert: The requested file key does not exist in this database (%s)" %(args.file_key))
+    if args.file_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
+        sys.exit("Unable to revert: The requested state (%s) does not exist for this file key (%s)" %(args.state, args.file_key))
     args.file_key = _CURRENT_DATABASE.resolve_key(args.file_key, True)
     _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     if args.stash and not args.state == '~stash':
@@ -190,8 +192,6 @@ def command_revert(args):
             _CURRENT_DATABASE.register_sa(args.file_key, hashalias, '~stash', True)
         else:
             _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name), '~stash')
-    if args.file_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
-        sys.exit("Unable to revert: The requested state (%s) does not exist for this file key (%s)" %(args.state, args.file_key))
     args.filename.close()
     authoritative_key = _CURRENT_DATABASE.resolve_key(args.file_key+":"+args.state, False)
     statefile = _CURRENT_DATABASE.state_keys[authoritative_key][2]
