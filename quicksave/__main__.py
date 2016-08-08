@@ -430,7 +430,89 @@ def command_recover(args):
     print("Aliases for this file key:", aliases)
 
 def command_clean(args):
-    sys.exit("This command is not yet ready")
+    initdb()
+    didop = False
+    msg = ''
+    if args.trash:
+        didop = True
+        for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0] == '~trash']:
+            del _CURRENT_DATABASE.file_keys[key]
+        for key in [key for key in _CURRENT_DATABASE.state_keys]:
+            if key.startswith("~trash:"): #this state key belongs to the trash file key
+                del _CURRENT_DATABASE.state_keys[key]
+            elif key.endswith(":~trash"): #this is a trash state key, but it belongs to a regular key
+                datafile = _CURRENT_DATABASE.state_keys[key][2]
+                _CURRENT_DATABASE.file_keys[_CURRENT_DATABASE.state_keys[key][1]][2].remove(datafile)
+                os.remove(os.path.join(
+                    os.path.abspath(_CURRENT_DATABASE.base_dir),
+                    _CURRENT_DATABASE.file_keys[_CURRENT_DATABASE.state_keys[key][1]][1],
+                    datafile
+                ))
+                del _CURRENT_DATABASE.state_keys[key]
+            else:
+                entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
+                if entry[0] and entry[0].count('~trash'):
+                    del _CURRENT_DATABASE.state_keys[key]
+        msg+="Cleaned all ~trash state keys, and their aliases.\n"
+        if '~trash' in _CURRENT_DATABASE.file_keys:
+            rmtree(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                _CURRENT_DATABASE.file_keys['~trash'][1]
+            ))
+            del _CURRENT_DATABASE.file_keys['~trash']
+            msg+="Cleaned the ~trash file key and its aliases.\n"
+    if args.deduplicate:
+        didop = True
+        duplicates = {} #file key -> hash -> original state key
+        forward = {} #duplicate state key -> original state key
+        for key in sorted([key for key in _CURRENT_DATABASE.state_keys if not _CURRENT_DATABASE.state_keys[key][0]]):
+            entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
+            reader = open(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                _CURRENT_DATABASE.file_keys[entry[1]][1],
+                entry[2]
+            ), mode='rb')
+            hasher = sha256()
+            chunk = reader.read(4096)
+            while len(chunk):
+                hasher.update(chunk)
+                chunk = reader.read(4096)
+            hashsum = hasher.hexdigest()
+            reader.close()
+            if entry[1] not in duplicates:
+                duplicates[entry[1]] = {}
+            if hashsum not in duplicates[entry[1]]:
+                duplicates[entry[1]][hashsum] = ''+key
+            else:
+                forward[''+key] = duplicates[entry[1]][hashsum]
+                entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
+                try:
+                    os.remove(os.path.join(
+                        os.path.abspath(_CURRENT_DATABASE.base_dir),
+                        _CURRENT_DATABASE.file_keys[entry[1]][1],
+                        entry[2]
+                    ))
+                except FileNotFoundError:
+                    pass
+                _CURRENT_DATABASE.file_keys[entry[1]][2].remove(entry[2])
+                del _CURRENT_DATABASE.state_keys[key]
+        didforward = 0
+        for key in [key for key in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[key][0]]:
+            if _CURRENT_DATABASE.state_keys[key][0] in forward: #this is a state alias which should be forwarded
+                _CURRENT_DATABASE.state_keys[key][0] = forward[_CURRENT_DATABASE.state_keys[key][0]]
+                didforward += 1
+        for filekey in duplicates:
+            for hashkey in duplicates[filekey]:
+                if filekey+":"+hashkey not in _CURRENT_DATABASE.state_keys:
+                    _CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey)
+                if filekey+":"+hashkey[:7] not in _CURRENT_DATABASE.state_keys:
+                    _CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey[:7])
+        msg+="Removed the following state keys: "+str([key for key in forward])+\
+        " and forwarded "+str(didforward)+" aliases\n"
+    if not didop:
+        sys.exit("No operations were enabled for clean.  Set at least one of the flags when using '$ quicksave clean'")
+    _CURRENT_DATABASE.save()
+    print(msg[:-1])
 
 def main(args_input=sys.argv[1:]):
     parser = argparse.ArgumentParser(
@@ -717,7 +799,10 @@ def main(args_input=sys.argv[1:]):
     clean_parser.add_argument(
         '-d', '--deduplicate',
         action='store_true',
-        help="Remove any and all state keys which store identical states of the file"
+        help="Scans the database for state keys which store identical states of "+
+        "a file under the same file key. Removes all but one state key from each "+
+        "set of duplicates, and updates all aliases of the deleted keys to point "+
+        "to the remaining state key."
     )
 
     args = parser.parse_args(args_input)
