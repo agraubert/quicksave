@@ -517,7 +517,7 @@ def command_clean(args):
                     _CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey)
                 if filekey+":"+hashkey[:7] not in _CURRENT_DATABASE.state_keys:
                     _CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey[:7])
-        msg+="Removed the following state keys: "+str([key for key in forward])+\
+        msg+="Removed the following duplicate state keys: "+str([key for key in forward])+\
         " and forwarded "+str(didforward)+" aliases\n"
     if not didop:
         sys.exit("No operations were enabled for clean.  Set at least one of the flags when using '$ quicksave clean'")
