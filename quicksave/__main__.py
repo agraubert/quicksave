@@ -10,7 +10,7 @@ except SystemError:
     sys.path.append(os.path.dirname(__file__))
     from qs_database import Database as db
 
-_SPECIAL_file = ['~trash', '~last']
+_SPECIAL_FILE = ['~trash', '~last']
 _SPECIAL_STATE = ['~stash', '~trash']
 _CURRENT_DATABASE = None
 configfile = os.path.join(os.path.expanduser('~'), '.quicksave_config')
@@ -65,20 +65,20 @@ def command_register(args):
         ))
     (key, folder) = _CURRENT_DATABASE.register_fk(filepath)
     _CURRENT_DATABASE.register_fa(key, '~last', True)
-    if key in _SPECIAL_file:
+    if key in _SPECIAL_FILE:
         sys.exit("Unable to register: The provided filename overwrites a reserved file key (%s)"%key)
     file_aliases = []
     if len(args.file_alias):
         for user_alias in args.file_alias:
-            if user_alias in _SPECIAL_file:
+            if user_alias in _SPECIAL_FILE:
                 sys.exit("Unable to register: Cannot create a file alias which overwrites a reserved file key (%s)"%user_alias)
             if _CURRENT_DATABASE.register_fa(key, user_alias):
                 file_aliases.append(''+user_alias)
         if not len(file_aliases):
             sys.exit("Unable to register: None of the provided aliases were available")
-    if filepath not in _SPECIAL_file and _CURRENT_DATABASE.register_fa(key, filepath):
+    if filepath not in _SPECIAL_FILE and _CURRENT_DATABASE.register_fa(key, filepath):
         file_aliases.append(filepath)
-    if os.path.basename(filepath) not in _SPECIAL_file and _CURRENT_DATABASE.register_fa(key, os.path.basename(filepath)):
+    if os.path.basename(filepath) not in _SPECIAL_FILE and _CURRENT_DATABASE.register_fa(key, os.path.basename(filepath)):
         file_aliases.append(os.path.basename(filepath))
     (statekey, datafile) = _CURRENT_DATABASE.register_sk(key, os.path.relpath(filepath))
     hasher = sha256()
@@ -204,13 +204,12 @@ def command_revert(args):
         print("Old state saved to: ~stash")
 
 def command_alias(args):
-    sys.exit("This command is not yet ready")
     initdb()
     msg = ""
-    if not args.filekey: #working with file keys
+    if not ((args.d and args.target) or args.filekey): #working with file keys
         if args.d:
             if args.link not in _CURRENT_DATABASE.file_keys:
-                sys.exit("Unable to delete alias: The provided alias does not exist (%s)"%args.link)
+                sys.exit("Unable to delete alias: The provided file alias does not exist (%s)"%args.link)
             result = _CURRENT_DATABASE.file_keys[args.link]
             if not result[0]:
                 sys.exit("Unable to delete alias: The provided alias was a file key (%s).  Use '$ quicksave delete-key' to delete file keys"%(args.link))
@@ -220,16 +219,43 @@ def command_alias(args):
         elif args.target:
             if args.target not in _CURRENT_DATABASE.file_keys:
                 sys.exit("Unable to create alias: The provided target key does not exist (%s)"%args.target)
+            if args.link in _CURRENT_DATABASE.file_keys and _CURRENT_DATABASE.file_keys[args.link]:
+                sys.exit("Unable to create alias: The provided alias name is already in use by a file key (%s)"%args.link)
             authoritative_key = _CURRENT_DATABASE.resolve_key(args.target, True)
             _CURRENT_DATABASE.register_fa(authoritative_key, args.link, True)
             _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
             msg = "Registered file alias: %s --> %s"%(args.link, authoritative_key)
     else:
-        if args.link not in _CURRENT_DATABASE.file_keys:
-            sys.exit("Unable to modify state alias table: Must provide a file key as first argument")
         if args.d:
             if not args.target:
-                sys.exit("Unable to delete alias: A target alias was not provided")
+                sys.exit("Unable to delete alias: A file key must be provided as the second argument")
+            if args.target not in _CURRENT_DATABASE.file_keys:
+                sys.exit("Unable to delete alias: The provided file key does not exist (%s)"%args.filekey)
+            filekey = _CURRENT_DATABASE.resolve_key(args.target, True)
+            if filekey+":"+args.link not in _CURRENT_DATABASE.state_keys:
+                sys.exit("Unable to delete alias: The provided state alias does not exist (%s)"%args.link)
+            result = _CURRENT_DATABASE.state_keys[filekey+":"+args.link]
+            if not result[0]:
+                sys.exit("Unable to delete alias: The provided alias was a state key (%s).  Use '$ quicksave delete-key' to delete state keys"%(args.link))
+            del _CURRENT_DATABASE.state_keys[filekey+":"+args.link]
+            msg = "Deleted state alias: %s"%args.link
+        else:
+            if not args.filekey:
+                sys.exit("Unable to create state alias: A file key or alias was not provided")
+            elif args.filekey not in _CURRENT_DATABASE.file_keys:
+                sys.exit("Unable to create alias: The provided file key does not exist (%s)"%args.filekey)
+            filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
+            if filekey+":"+args.target not in _CURRENT_DATABASE.state_keys:
+                sys.exit("Unable to create alias: The provided state key does not exist (%s)"%args.target)
+            statekey = _CURRENT_DATABASE.resolve_key(filekey+":"+args.target, False)
+            if filekey+":"+args.link in _CURRENT_DATABASE.state_keys and not _CURRENT_DATABASE.state_keys[filekey+":"+args.link][0]:
+                sys.exit("Unable to create alias: The provided alias name is already in use by a state key (%s)"%args.link)
+            _CURRENT_DATABASE.register_sa(filekey, statekey.replace(filekey+":", '', 1), args.link, True)
+            _CURRENT_DATABASE.register_fa(filekey, '~last', True)
+            msg = "Registered state alias: %s --> %s\nAuthoritative file key: %s"%(args.link, statekey, filekey)
+    print(msg)
+    _CURRENT_DATABASE.save()
+
 
 
 def command_list(args):
@@ -279,6 +305,8 @@ def command_lookup(args):
 def command_recover(args):
     sys.exit("This command is not yet ready")
 
+def command_clean(args):
+    sys.exit("This command is not yet ready")
 
 def main(args_input=sys.argv[1:]):
     parser = argparse.ArgumentParser(
@@ -307,7 +335,7 @@ def main(args_input=sys.argv[1:]):
         "file are grouped together by a few file keys which distinguish the set from other files.\n"+
         "A new unique file key will be automatically generated, but this key can also be aliased by\n"+
         "the original absolute filepath of the file, the original filename, and any user provided aliases.\n"+
-        "Note that the following file keys are reserved for special use: "+str(_SPECIAL_file)+".\n"+
+        "Note that the following file keys are reserved for special use: "+str(_SPECIAL_FILE)+".\n"+
         "Returns the file key and list of aliases for the new set of versions, and the initial state key for the starting version"
     )
     register_parser.set_defaults(func=command_register)
@@ -539,6 +567,25 @@ def main(args_input=sys.argv[1:]):
         description="Shows the current database path"
     )
     show_parser.set_defaults(func = lambda _:print(initdb()))
+
+    clean_parser = subparsers.add_parser(
+        'clean',
+        description="Cleans the database to reduce used space.\n"+
+        "If no flags are set, this is a no-op. Each flag enables a different stage of cleaning"
+    )
+    clean_parser.set_defaults(func=command_clean)
+    clean_parser.add_argument(
+        '-t', '--trash',
+        action='store_true',
+        help="Cleans the ~trash file key, and the ~trash state keys for all file keys.\n"+
+        "When a file or state key is deleted, the ~trash key points to that data, and the previous key is freed.\n"+
+        "The ~trash key is deleted by deleting a new key (overwriting ~trash), or manually using delete-key or clean"
+    )
+    clean_parser.add_argument(
+        '-d', '--deduplicate',
+        action='store_true',
+        help="Remove any and all state keys which store identical states of the file"
+    )
 
     args = parser.parse_args(args_input)
     print()
