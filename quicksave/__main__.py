@@ -200,8 +200,9 @@ def command_revert(args):
         print("Inferred file key:", args.file_key)
     print("State key reverted to:", authoritative_key.replace(args.file_key+":", '', 1))
     if did_stash:
-        _CURRENT_DATABASE.save()
         print("Old state saved to: ~stash")
+    _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
+    _CURRENT_DATABASE.save()
 
 def command_alias(args):
     initdb()
@@ -395,6 +396,8 @@ def command_lookup(args):
             args.filekey if args.filekey else args.target
         ))
     if args.filekey:
+        if args.filekey not in _CURRENT_DATABASE.file_keys:
+            sys.exit("Unable to lookup: The requested file key does not exist in this database (%s)"%args.filekey)
         args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
     if args.filekey and args.filekey+":"+args.target not in _CURRENT_DATABASE.state_keys:
         sys.exit("Unable to lookup: The requested state (%s) does not exist for this file key (%s)" %(args.target, args.filekey))
@@ -804,7 +807,7 @@ def main(args_input=sys.argv[1:]):
     helper['recover'] = recover_parser.print_help
     recover_parser.add_argument(
         'aliases',
-        nargs="?",
+        nargs="*",
         help="A list of user-defined aliases for the recovered key.  Quotes must be used to surround any aliases containing spaces.\n"+
         "Aliases must be unique within the database.  Non-unique aliases are ignored, but if any aliases are provided,\n"+
         "at least one must be unique or the operation will be canceled.",
