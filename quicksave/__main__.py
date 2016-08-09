@@ -448,12 +448,82 @@ def command_clean(args):
     initdb()
     didop = False
     msg = ''
+    if args.walk_database:
+        didop=True
+        prune_folders = []
+        prune_files = []
+        prune_filekeys = []
+        prune_statekeys = []
+        folder_map = {
+            key: _CURRENT_DATABASE.file_keys[key][1]
+            for key in _CURRENT_DATABASE.file_keys
+            if not _CURRENT_DATABASE.file_keys[key][0]
+        }
+        manifest = {entry:{} for entry in _CURRENT_DATABASE.data_folders}
+
+        for key in _CURRENT_DATABASE.state_keys:
+            entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
+            if not entry[0]:
+                manifest[folder_map[entry[1]]][entry[2]] = [key, False]
+        for path in os.walk(_CURRENT_DATABASE.base_dir):
+            if path[0] == _CURRENT_DATABASE.base_dir:
+                #Folders phase
+                for target in set(path[1])-{os.path.basename(folder) for folder in _CURRENT_DATABASE.data_folders}:
+                    rmtree(os.path.join(
+                        os.path.abspath(_CURRENT_DATABASE.base_dir),
+                        os.path.basename(target)
+                    ))
+                    prune_folders.append(''+target)
+            else:
+                for target in path[2]:
+                    if target in manifest[path[0]]:
+                        manifest[path[0]][target][1] = True
+                    else:
+                        os.remove(os.path.join(
+                            os.path.abspath(_CURRENT_DATABASE.base_dir),
+                            os.path.basename(path[0]),
+                            target
+                        ))
+                        prune_files.append(os.path.join(
+                            os.path.basename(path[0]),
+                            target
+                        ))
+        #filekeys phase
+        for key in folder_map:
+            if not os.path.isdir(os.path.join(
+                os.path.abspath(_CURRENT_DATABASE.base_dir),
+                folder_map[key]
+            )):
+                for alias in [alias for alias in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[alias][0]==key]:
+                    del _CURRENT_DATABASE.file_keys[alias]
+                for statekey in [statekey for statekey in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[statekey][1]==key]:
+                    del _CURRENT_DATABASE.state_keys[statekey]
+                del _CURRENT_DATABASE.file_keys[key]
+                prune_filekeys.append(''+key)
+        #statekeys phase
+        for entry in [manifest[folder][datafile] for folder in manifest for datafile in manifest[folder]]:
+            if entry[0] in _CURRENT_DATABASE.state_keys and not entry[1]:
+                del _CURRENT_DATABASE.state_keys[entry[0]]
+                prune_statekeys.append(''+entry[0])
+                for alias in [alias for alias in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[alias][0]==entry[0]]:
+                    del _CURRENT_DATABASE.state_keys[alias]
+        if len(prune_folders):
+            msg += "Removed the following %d unused database folders:%s\n"%(len(prune_folders), str(prune_folders))
+        if len(prune_files):
+            msg += "Removed the following %d orphaned files in the database:%s\n"%(len(prune_files), str(prune_files))
+        if len(prune_filekeys):
+            msg += "Removed the following %d file keys with missing data folders:%s\n"%(len(prune_filekeys), str(prune_filekeys))
+        if len(prune_statekeys):
+            msg += "Removed the following %d state keys with missing data files:%s\n"%(len(prune_statekeys), str(prune_statekeys))
     if args.trash:
         didop = True
+        statekeys = 0
+        statealiases = 0
         for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0] == '~trash']:
             del _CURRENT_DATABASE.file_keys[key]
         for key in [key for key in _CURRENT_DATABASE.state_keys]:
             if key.startswith("~trash:"): #this state key belongs to the trash file key
+                statekeys+=1
                 del _CURRENT_DATABASE.state_keys[key]
             elif key.endswith(":~trash"): #this is a trash state key, but it belongs to a regular key
                 datafile = _CURRENT_DATABASE.state_keys[key][2]
@@ -463,12 +533,15 @@ def command_clean(args):
                     _CURRENT_DATABASE.file_keys[_CURRENT_DATABASE.state_keys[key][1]][1],
                     datafile
                 ))
+                statekeys+=1
                 del _CURRENT_DATABASE.state_keys[key]
             else:
                 entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
                 if entry[0] and entry[0].count('~trash'):
+                    statealiases+=1
                     del _CURRENT_DATABASE.state_keys[key]
-        msg+="Cleaned all ~trash state keys, and their aliases.\n"
+        if statekeys+statealiases:
+            msg += "Cleaned %d ~trash state keys and %d ~trash state aliases\n"%(statekeys, statealiases)
         if '~trash' in _CURRENT_DATABASE.file_keys:
             rmtree(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
@@ -522,12 +595,19 @@ def command_clean(args):
                     _CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey)
                 if filekey+":"+hashkey[:7] not in _CURRENT_DATABASE.state_keys:
                     _CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey[:7])
-        msg+="Removed the following duplicate state keys: "+str([key for key in forward])+\
-        " and forwarded "+str(didforward)+" aliases\n"
+        if len(forward):
+            msg += "Removed the following %d duplicate state keys:%s and forwarded %d aliases\n"%(
+                len(forward),
+                str(forward),
+                didforward
+            )
     if not didop:
         sys.exit("No action taken.  Set at least one of the flags when using '$ quicksave clean'")
     _CURRENT_DATABASE.save()
-    print(msg[:-1])
+    if len(msg):
+        print(msg[:-1])
+    else:
+        print("Nothing to clean")
 
 def command_help(args, helper):
     if not args.subcommand:
@@ -843,6 +923,14 @@ def main(args_input=sys.argv[1:]):
         "set of duplicates, and updates all aliases of the deleted keys to point "+
         "to the remaining state key."
     )
+    clean_parser.add_argument(
+        '-w', '--walk-database',
+        action='store_true',
+        help="Checks the database file manifest against the list of files visible "+
+        "within the directory.  Files found in the database directory that do not "+
+        "exist in the manifest are deleted.  Files listed in the manifest which cannot "+
+        "be found in the directory will have their corresponding state key (and its aliases) deleted"
+    )
 
     help_parser = subparsers.add_parser(
         'help',
@@ -861,7 +949,13 @@ def main(args_input=sys.argv[1:]):
     if 'func' not in dir(args):
         parser.print_help()
         sys.exit(2)
-    args.func(args)
+    try:
+        args.func(args)
+    except FileNotFoundError as e:
+        raise FileNotFoundError("Command failed!  Unable to open a requested file. "+
+                                " Try running `$ quicksave clean -w` to clean the database") from e
+    except Exception as e:
+        raise RuntimeError("Command failed!  Encountered an unknown exception!") from e
 
 
 if __name__ == '__main__':
