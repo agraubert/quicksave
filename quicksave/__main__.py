@@ -421,7 +421,7 @@ def command_recover(args):
     _CURRENT_DATABASE.file_keys[filekey] = [item for item in entry]
     aliases = []
     for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0]=='~trash']:
-        _CURRENT_DATABASE.file_keys[key][1] = filekey
+        _CURRENT_DATABASE.file_keys[key][0] = filekey
         aliases.append(key)
     if len(args.aliases):
         for user_alias in args.aliases:
@@ -525,7 +525,7 @@ def command_clean(args):
         msg+="Removed the following duplicate state keys: "+str([key for key in forward])+\
         " and forwarded "+str(didforward)+" aliases\n"
     if not didop:
-        sys.exit("No operations were enabled for clean.  Set at least one of the flags when using '$ quicksave clean'")
+        sys.exit("No action taken.  Set at least one of the flags when using '$ quicksave clean'")
     _CURRENT_DATABASE.save()
     print(msg[:-1])
 
@@ -690,10 +690,10 @@ def main(args_input=sys.argv[1:]):
         'alias',
         description="Create, override, or delete an alias for a file or state key.\n"+
         "The action taken by this command depends on the specific command syntax:\n"+
-        "'$ quicksave <link> <target>' creates or overwrites the file key alias <link> to point to the file key (or alias) <target>.\n"+
-        "'$ quicksave -d <link>' deletes the file key alias <link>.  Cannot delete file keys (only aliases).\n"+
-        "'$ quicksave <link> <target> <filekey>' creates or overwrites the state key alias <link> to point to the state key (or alias) <target> under the file key <file>.\n"+
-        "'$ quicksave -d <link> <filekey>' delets the state key alias <link> under the file key <filekey>.  Cannot delete state keys (only aliases).\n"+
+        "'$ quicksave alias <link> <target>' creates or overwrites the file key alias <link> to point to the file key (or alias) <target>.\n"+
+        "'$ quicksave alias -d <link>' deletes the file key alias <link>.  Cannot delete file keys (only aliases).\n"+
+        "'$ quicksave alias <link> <target> <filekey>' creates or overwrites the state key alias <link> to point to the state key (or alias) <target> under the file key <file>.\n"+
+        "'$ quicksave alias -d <link> <filekey>' deletes the state key alias <link> under the file key <filekey>.  Cannot delete state keys (only aliases).\n"+
         "To delete authoritative file or state keys, use '$ quicksave delete-key <file key> [state key]'"
     )
     alias_parser.set_defaults(func=command_alias)
