@@ -519,7 +519,9 @@ def command_clean(args):
         didop = True
         statekeys = 0
         statealiases = 0
+        trashaliases = 0
         for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0] == '~trash']:
+            trashaliases +=1
             del _CURRENT_DATABASE.file_keys[key]
         for key in [key for key in _CURRENT_DATABASE.state_keys]:
             if key.startswith("~trash:"): #this state key belongs to the trash file key
@@ -541,14 +543,14 @@ def command_clean(args):
                     statealiases+=1
                     del _CURRENT_DATABASE.state_keys[key]
         if statekeys+statealiases:
-            msg += "Cleaned %d ~trash state keys and %d ~trash state aliases\n"%(statekeys, statealiases)
+            msg += "Cleaned %d ~trash state keys and %d aliases\n"%(statekeys, statealiases)
         if '~trash' in _CURRENT_DATABASE.file_keys:
             rmtree(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
                 _CURRENT_DATABASE.file_keys['~trash'][1]
             ))
             del _CURRENT_DATABASE.file_keys['~trash']
-            msg+="Cleaned the ~trash file key and its aliases.\n"
+            msg+="Cleaned the ~trash file key and its %d aliases.\n"%trashaliases
     if args.deduplicate:
         didop = True
         duplicates = {} #file key -> hash -> original state key
@@ -574,14 +576,11 @@ def command_clean(args):
             else:
                 forward[''+key] = duplicates[entry[1]][hashsum]
                 entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
-                try:
-                    os.remove(os.path.join(
-                        os.path.abspath(_CURRENT_DATABASE.base_dir),
-                        _CURRENT_DATABASE.file_keys[entry[1]][1],
-                        entry[2]
-                    ))
-                except FileNotFoundError:
-                    pass
+                os.remove(os.path.join(
+                    os.path.abspath(_CURRENT_DATABASE.base_dir),
+                    _CURRENT_DATABASE.file_keys[entry[1]][1],
+                    entry[2]
+                ))
                 _CURRENT_DATABASE.file_keys[entry[1]][2].remove(entry[2])
                 del _CURRENT_DATABASE.state_keys[key]
         didforward = 0
@@ -918,7 +917,10 @@ def main(args_input=sys.argv[1:]):
     clean_parser.add_argument(
         '-d', '--deduplicate',
         action='store_true',
-        help="Scans the database for state keys which store identical states of "+
+        help="WARNING: deduplication may take a very long time, depending on the "+
+        "size of your database as it must compute hashes for every single state "+
+        "of every single file in the database. "+
+        "Scans the database for state keys which store identical states of "+
         "a file under the same file key. Removes all but one state key from each "+
         "set of duplicates, and updates all aliases of the deleted keys to point "+
         "to the remaining state key."
