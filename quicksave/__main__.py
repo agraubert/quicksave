@@ -552,7 +552,7 @@ def command_clean(args):
                 _CURRENT_DATABASE.file_keys['~trash'][1]
             ))
             del _CURRENT_DATABASE.file_keys['~trash']
-            msg+="Cleaned the ~trash file key and its %d aliases.\n"%trashaliases
+            msg+="Cleaned the ~trash file key and %d aliases.\n"%trashaliases
     if args.deduplicate:
         didop = True
         duplicates = {} #file key -> hash -> original state key
@@ -599,7 +599,7 @@ def command_clean(args):
         if len(forward):
             msg += "Removed the following %d duplicate state keys:%s and forwarded %d aliases\n"%(
                 len(forward),
-                str(forward),
+                str([key for key in forward]),
                 didforward
             )
     if not didop:
