@@ -207,6 +207,8 @@ def command_revert(args):
 def command_alias(args):
     initdb()
     msg = ""
+    if not (args.d or args.target or args.filekey):
+        sys.exit("Unable to modify table: Not enough arguments provided to determine action")
     if not ((args.d and args.target) or args.filekey): #working with file keys
         if args.d:
             if args.link not in _CURRENT_DATABASE.file_keys:
