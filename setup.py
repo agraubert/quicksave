@@ -1,13 +1,17 @@
 from setuptools import setup
+import pypandoc
 
 long_desc = "A (very) simple file versioning system"
 
 import re
-
-reader = open("README.md", mode='r')
-long_desc = reader.read()
-version = re.search(r'__Version:__ ([0-9\.a-zA-Z]*)', long_desc).group(1)
-reader.close()
+try:
+    pypandoc.convert_file("README.md", 'rst', outputfile="README.rst")
+    reader = open("README.rst", mode='r')
+    long_desc = reader.read()
+    version = re.search(r'\*\*Version:\*\* ([0-9\.a-zA-Z]*)', long_desc).group(1)
+    reader.close()
+except OSError:
+    raise FileNotFoundError("Unable to locate README.rst")
 
 setup(
     name="quicksave",
