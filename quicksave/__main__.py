@@ -51,6 +51,19 @@ def initdb():
         sys.exit(msg)
     return database_path
 
+def gethash(reader):
+    hasher = sha256()
+    chunk = reader.read(4096)
+    while len(chunk):
+        hasher.update(chunk)
+        chunk = reader.read(4096)
+    return hasher.hexdigest()
+
+def fetchstate(hashalias, filekey):
+    if filekey+":"+hashalias in _CURRENT_DATABASE.state_keys:
+        return _CURRENT_DATABASE.resolve_key(filekey+":"+hashalias, False)
+    return None
+
 def command_init(args):
     writer = open(configfile, mode='w')
     writer.write(args.database_path+'\n')
@@ -81,13 +94,8 @@ def command_register(args):
     if os.path.basename(filepath) not in _SPECIAL_FILE and _CURRENT_DATABASE.register_fa(key, os.path.basename(filepath)):
         file_aliases.append(os.path.basename(filepath))
     (statekey, datafile) = _CURRENT_DATABASE.register_sk(key, os.path.relpath(filepath))
-    hasher = sha256()
-    chunk = args.filename.read(4096)
-    while len(chunk):
-        hasher.update(chunk)
-        chunk = args.filename.read(4096)
+    hashalias = gethash(args.filename)
     args.filename.close()
-    hashalias = hasher.hexdigest()
     _CURRENT_DATABASE.register_sa(key, statekey, hashalias)
     state_aliases = []
     if key+":"+hashalias[:7] in _CURRENT_DATABASE.state_keys:
@@ -122,17 +130,14 @@ def command_save(args):
             sys.exit("Unable to save: Could not infer the file key.  Please set one explicitly with the -k option")
     if args.file_key not in _CURRENT_DATABASE.file_keys:
         sys.exit("Unable to save: The requested file key does not exist in this database (%s)" %(args.file_key))
-    hasher = sha256()
-    chunk = args.filename.read(4096)
-    while len(chunk):
-        hasher.update(chunk)
-        chunk = args.filename.read(4096)
+    args.file_key = _CURRENT_DATABASE.resolve_key(args.file_key, True)
+    hashalias = gethash(args.filename)
     args.filename.close()
-    hashalias = hasher.hexdigest()
-    if args.file_key+":"+hashalias in _CURRENT_DATABASE.state_keys and not args.allow_duplicate:
-        # print("The state of the current file matches a previously registered state for this file key.  Use the '--allow-duplicate' flag if you would like to create a new state anyways")
+    currentstate = fetchstate(hashalias, args.file_key)
+    print(currentstate)
+    if currentstate and not args.allow_duplicate:
         sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
-            _CURRENT_DATABASE.resolve_key(_CURRENT_DATABASE.state_keys[args.file_key+":"+hashalias][0], False).replace(args.file_key+":", '', 1)
+            currentstate.replace(args.file_key+":", '', 1)
         ))
     (key, datafile) = _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name))
     _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
@@ -150,6 +155,11 @@ def command_save(args):
     elif args.file_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
         _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias[:7], args.force)
         aliases.append(hashalias[:7])
+    basefile = os.path.basename(args.filename)
+    if ((basefile not in _CURRENT_DATABASE.file_keys or _CURRENT_DATABASE.file_keys[basefile][0]!=args.file_key) and
+        args.file_key+":"+basefile not in _CURRENT_DATABASE.s_keys):
+        _CURRENT_DATABASE.register_sa(args.file_key, key, basefile)
+        aliases.append(""+basefile)
     _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias)
     _CURRENT_DATABASE.save()
     if infer:
@@ -175,6 +185,11 @@ def command_revert(args):
     if args.file_key+":"+args.state not in _CURRENT_DATABASE.state_keys:
         sys.exit("Unable to revert: The requested state (%s) does not exist for this file key (%s)" %(args.state, args.file_key))
     _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
+    hashalias = gethash(args.filename)
+    currentstate = fetchstate(hashalias, args.file_key)
+    authoritative_key = _CURRENT_DATABASE.resolve_key(args.file_key+":"+args.state, False)
+    if currentstate == authoritative_key and not args.force:
+        sys.exit("Unable to revert: The file is already in the requested state")
     if args.stash and not args.state == '~stash':
         did_stash = True
         if args.file_key+":~stash" in _CURRENT_DATABASE.state_keys:
@@ -182,18 +197,11 @@ def command_revert(args):
             if oldfile in _CURRENT_DATABASE.file_keys[args.file_key][2]:
                 _CURRENT_DATABASE.file_keys[args.file_key][2].remove(oldfile)
             del _CURRENT_DATABASE.state_keys[args.file_key+":~stash"]
-        hasher = sha256()
-        chunk = args.filename.read(4096)
-        while len(chunk):
-            hasher.update(chunk)
-            chunk = args.filename.read(4096)
-        hashalias = hasher.hexdigest()
-        if args.file_key+":"+hashalias in _CURRENT_DATABASE.state_keys:
+        if currentstate:
             _CURRENT_DATABASE.register_sa(args.file_key, hashalias, '~stash', True)
         else:
             _CURRENT_DATABASE.register_sk(args.file_key, os.path.abspath(args.filename.name), '~stash')
     args.filename.close()
-    authoritative_key = _CURRENT_DATABASE.resolve_key(args.file_key+":"+args.state, False)
     statefile = _CURRENT_DATABASE.state_keys[authoritative_key][2]
     copyfile(os.path.join(_CURRENT_DATABASE.file_keys[args.file_key][1], statefile), args.filename.name)
     if infer:
@@ -564,12 +572,7 @@ def command_clean(args):
                 _CURRENT_DATABASE.file_keys[entry[1]][1],
                 entry[2]
             ), mode='rb')
-            hasher = sha256()
-            chunk = reader.read(4096)
-            while len(chunk):
-                hasher.update(chunk)
-                chunk = reader.read(4096)
-            hashsum = hasher.hexdigest()
+            hashsum = gethash(reader)
             reader.close()
             if entry[1] not in duplicates:
                 duplicates[entry[1]] = {}
@@ -609,6 +612,32 @@ def command_clean(args):
         print(msg[:-1])
     else:
         print("Nothing to clean")
+
+def command_status(args):
+    initdb()
+    infer = not bool(args.file_key)
+    did_stash = False
+    if infer:
+        filepath = os.path.abspath(args.filename.name)
+        if filepath in _CURRENT_DATABASE.file_keys:
+            args.file_key = _CURRENT_DATABASE.resolve_key(filepath, True)
+        elif os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
+            args.file_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
+        else:
+            sys.exit("Unable to check status: Could not infer the file key.  Please set one explicitly with the -k option")
+    if args.file_key not in _CURRENT_DATABASE.file_keys:
+        sys.exit("Unable to check status: The requested file key does not exist in this database (%s)" %(args.file_key))
+    args.file_key = _CURRENT_DATABASE.resolve_key(args.file_key, True)
+    _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
+    hashalias = gethash(args.filename)
+    currentstate = fetchstate(hashalias, args.file_key)
+    args.filename.close()
+    basefile = os.path.basename(args.filename.name)
+    if infer:
+        print("Inferred file key:", args.file_key)
+    print("Status:", basefile,"-->",
+        '"'+currentstate.replace(args.file_key+":", '', 1)+'"' if currentstate else "<New State>"
+    )
 
 def command_help(args, helper):
     if not args.subcommand:
@@ -765,6 +794,11 @@ def main(args_input=sys.argv[1:]):
         "'$ quicksave revert <filename> ~stash' then\n"+
         "'$ quicksave save <filename>'",
         dest='stash'
+    )
+    revert_parser.add_argument(
+        '-f', '--force',
+        action='store_true',
+        help="Forces the revert to progress even if the file is already in the requested state"
     )
 
     alias_parser = subparsers.add_parser(
@@ -925,7 +959,8 @@ def main(args_input=sys.argv[1:]):
         "Scans the database for state keys which store identical states of "+
         "a file under the same file key. Removes all but one state key from each "+
         "set of duplicates, and updates all aliases of the deleted keys to point "+
-        "to the remaining state key."
+        "to the remaining state key.  Deduplication will also replace any missing "+
+        "hash aliases for all remaining states."
     )
     clean_parser.add_argument(
         '-w', '--walk-database',
@@ -934,6 +969,26 @@ def main(args_input=sys.argv[1:]):
         "within the directory.  Files found in the database directory that do not "+
         "exist in the manifest are deleted.  Files listed in the manifest which cannot "+
         "be found in the directory will have their corresponding state key (and its aliases) deleted"
+    )
+
+    status_parser = subparsers.add_parser(
+        'status',
+        description="Checks if the given file currently matches a known state"
+    )
+    status_parser.set_defaults(func=command_status)
+    helper['status'] = status_parser.print_help
+    status_parser.add_argument(
+        'filename',
+        type=argparse.FileType('rb'),
+        help="The file to check"
+    )
+    status_parser.add_argument(
+        '-k', '--file-key',
+        help="The file key linked to the set of states to save this file in.\n"+
+        "If the file key is not specified it will be inferred by the full filepath or the filename (in that order).\n"+
+        "If neither the filepath nor the filename match any file key aliases in this database,\n"+
+        "quicksave will require the user to provide this option.",
+        default=None
     )
 
     help_parser = subparsers.add_parser(
