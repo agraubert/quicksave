@@ -1,5 +1,5 @@
 # quicksave
-[![PyPI](https://img.shields.io/pypi/v/quicksave.svg?maxAge=2592000)](https://pypi.python.org/pypi/quicksave)
+[![PyPI](https://img.shields.io/pypi/v/quicksave.svg)](https://pypi.python.org/pypi/quicksave)
 
 A (very) simple file versioning system
 
