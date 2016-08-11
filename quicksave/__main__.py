@@ -155,7 +155,7 @@ def command_save(args):
     elif args.file_key+":"+hashalias not in _CURRENT_DATABASE.state_keys:
         _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias[:7], args.force)
         aliases.append(hashalias[:7])
-    basefile = os.path.basename(args.filename)
+    basefile = os.path.basename(args.filename.name)
     if ((basefile not in _CURRENT_DATABASE.file_keys or _CURRENT_DATABASE.file_keys[basefile][0]!=args.file_key) and
         args.file_key+":"+basefile not in _CURRENT_DATABASE.s_keys):
         _CURRENT_DATABASE.register_sa(args.file_key, key, basefile)
