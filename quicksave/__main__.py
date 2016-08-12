@@ -165,7 +165,7 @@ def command_save(args):
         aliases.append(hashalias[:7])
     basefile = os.path.basename(args.filename.name)
     if ((basefile not in _CURRENT_DATABASE.file_keys or _CURRENT_DATABASE.file_keys[basefile][0]!=args.file_key) and
-        args.file_key+":"+basefile not in _CURRENT_DATABASE.s_keys):
+        args.file_key+":"+basefile not in _CURRENT_DATABASE.state_keys):
         _CURRENT_DATABASE.register_sa(args.file_key, key, basefile)
         aliases.append(""+basefile)
     _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias)
@@ -225,6 +225,7 @@ def command_revert(args):
 def command_alias(args):
     initdb()
     msg = ""
+    _data_result = []
     if not (args.d or args.target or args.filekey):
         sys.exit("Unable to modify table: Not enough arguments provided to determine action")
     if not ((args.d and args.target) or args.filekey): #working with file keys
@@ -237,6 +238,7 @@ def command_alias(args):
             del _CURRENT_DATABASE.file_keys[args.link]
             _CURRENT_DATABASE.register_fa(result[0], '~last', True)
             msg = "Deleted file alias: %s"%args.link
+            _data_result = [args.link]
         elif args.target:
             if args.target not in _CURRENT_DATABASE.file_keys:
                 sys.exit("Unable to create alias: The provided target key does not exist (%s)"%args.target)
@@ -248,6 +250,7 @@ def command_alias(args):
             _CURRENT_DATABASE.register_fa(authoritative_key, args.link, True)
             _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
             msg = "Registered file alias: %s --> %s"%(args.link, authoritative_key)
+            _data_result = [args.link, authoritative_key]
     else:
         if args.d:
             if not args.target:
@@ -265,6 +268,7 @@ def command_alias(args):
             del _CURRENT_DATABASE.state_keys[filekey+":"+args.link]
             msg = "Deleted state alias: %s from file key %s"%(args.link, filekey)
             _CURRENT_DATABASE.register_fa(filekey, '~last', True)
+            _data_result = [args.link, filekey]
         else:
             if not args.filekey:
                 sys.exit("Unable to create state alias: A file key or alias was not provided")
@@ -281,8 +285,10 @@ def command_alias(args):
             _CURRENT_DATABASE.register_sa(filekey, statekey.replace(filekey+":", '', 1), args.link, True)
             _CURRENT_DATABASE.register_fa(filekey, '~last', True)
             msg = "Registered state alias: %s --> %s under file key: %s"%(args.link, statekey.replace(filekey+":", '', 1), filekey)
+            _data_result = [args.link, statekey.replace(filekey+":",'',1), filekey]
     do_print(msg)
     _CURRENT_DATABASE.save()
+    return _data_result
 
 
 
@@ -312,10 +318,10 @@ def command_list(args):
                 display_key = key.replace(args.filekey+":", '', 1)
                 if not isfile:
                     do_print("State Key: " if args.aliases else '', display_key, sep='')
-                    output.append(key)
+                    output.append(display_key)
                 elif args.aliases:
                     do_print("State Alias:", display_key, "(Alias of: %s)"%isfile.replace(args.filekey+":", '', 1))
-                    output.append(key)
+                    output.append(display_key)
     return [item for item in output]
 
 def command_delete(args):
@@ -475,6 +481,7 @@ def command_clean(args):
     initdb()
     didop = False
     msg = ''
+    results = {}
     if args.walk_database:
         didop=True
         prune_folders = []
@@ -536,12 +543,16 @@ def command_clean(args):
                     del _CURRENT_DATABASE.state_keys[alias]
         if len(prune_folders):
             msg += "Removed the following %d unused database folders:%s\n"%(len(prune_folders), str(prune_folders))
+            result['prune_folders'] = prune_folders
         if len(prune_files):
             msg += "Removed the following %d orphaned files in the database:%s\n"%(len(prune_files), str(prune_files))
+            result['prune_files'] = prune_files
         if len(prune_filekeys):
             msg += "Removed the following %d file keys with missing data folders:%s\n"%(len(prune_filekeys), str(prune_filekeys))
+            result['prune_filekeys'] = prune_filekeys
         if len(prune_statekeys):
             msg += "Removed the following %d state keys with missing data files:%s\n"%(len(prune_statekeys), str(prune_statekeys))
+            result['prune_statekeys'] = prune_statekeys
     if args.trash:
         didop = True
         statekeys = 0
@@ -571,6 +582,7 @@ def command_clean(args):
                     del _CURRENT_DATABASE.state_keys[key]
         if statekeys+statealiases:
             msg += "Cleaned %d ~trash state keys and %d aliases\n"%(statekeys, statealiases)
+            result['trash_state'] = [statekeys, statealiases]
         if '~trash' in _CURRENT_DATABASE.file_keys:
             rmtree(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
@@ -578,6 +590,7 @@ def command_clean(args):
             ))
             del _CURRENT_DATABASE.file_keys['~trash']
             msg+="Cleaned the ~trash file key and %d aliases.\n"%trashaliases
+            result['trash_file'] = trashaliases
     if args.deduplicate:
         didop = True
         duplicates = {} #file key -> hash -> original state key
@@ -622,6 +635,7 @@ def command_clean(args):
                 str([key for key in forward]),
                 didforward
             )
+            result['deduplicate'] = forward
     if not didop:
         sys.exit("No action taken.  Set at least one of the flags when using '$ quicksave clean'")
     _CURRENT_DATABASE.save()
@@ -655,6 +669,7 @@ def command_status(args):
     do_print("Status:", basefile,"-->",
         '"'+currentstate.replace(args.file_key+":", '', 1)+'"' if currentstate else "<New State>"
     )
+    return [args.file_key, currentstate]
 
 def command_help(args, helper):
     if not args.subcommand:
