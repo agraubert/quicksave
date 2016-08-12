@@ -15,6 +15,12 @@ _SPECIAL_STATE = ['~stash', '~trash']
 _CURRENT_DATABASE = None
 configfile = os.path.join(os.path.expanduser('~'), '.quicksave_config')
 
+def _do_print(PRINT_ENABLED, *args, **kwargs):
+    if PRINT_ENABLED:
+        print(*args, **kwargs)
+
+do_print = None
+
 def check_is_directory(argument):
     fullpath = os.path.abspath(argument)
     if os.path.isfile(fullpath):
@@ -40,7 +46,7 @@ def initdb():
             try:
                 _CURRENT_DATABASE = db(database_path)
             except FileNotFoundError:
-                print("Bad database path:", database_path)
+                do_print("Bad database path:", database_path)
                 msg = "Unable to open the database.  It may have been deleted, or the config file may have been manually edited. Run '$ quicksave init <databse path>' to resolve"
             except:
                 sys.exit("The database is corrupted.  Use '$ quicksave init <database path>' and initialize a new database")
@@ -113,10 +119,10 @@ def command_register(args):
         if not len(state_aliases):
             sys.exit("Unable to save: None of the provided aliases were available")
     _CURRENT_DATABASE.save()
-    print("Registered new file key:", key)
-    print("Aliases for this file key:", file_aliases)
-    print("Initial state key:", statekey)
-    print("Aliases for this state key:", state_aliases)
+    do_print("Registered new file key:", key)
+    do_print("Aliases for this file key:", file_aliases)
+    do_print("Initial state key:", statekey)
+    do_print("Aliases for this state key:", state_aliases)
     return [key, [item for item in file_aliases], statekey, [item for item in state_aliases]]
 
 def command_save(args):
@@ -136,7 +142,7 @@ def command_save(args):
     hashalias = gethash(args.filename)
     args.filename.close()
     currentstate = fetchstate(hashalias, args.file_key)
-    print(currentstate)
+    do_print(currentstate)
     if currentstate and not args.allow_duplicate:
         sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
             currentstate.replace(args.file_key+":", '', 1)
@@ -165,9 +171,9 @@ def command_save(args):
     _CURRENT_DATABASE.register_sa(args.file_key, key, hashalias)
     _CURRENT_DATABASE.save()
     if infer:
-        print("Inferred file key:", args.file_key)
-    print("New state key:", key)
-    print("Aliases for this key:", aliases)
+        do_print("Inferred file key:", args.file_key)
+    do_print("New state key:", key)
+    do_print("Aliases for this key:", aliases)
     return [args.file_key, key, [item for item in aliases]]
 
 def command_revert(args):
@@ -208,10 +214,10 @@ def command_revert(args):
     statefile = _CURRENT_DATABASE.state_keys[authoritative_key][2]
     copyfile(os.path.join(_CURRENT_DATABASE.file_keys[args.file_key][1], statefile), args.filename.name)
     if infer:
-        print("Inferred file key:", args.file_key)
-    print("State key reverted to:", authoritative_key.replace(args.file_key+":", '', 1))
+        do_print("Inferred file key:", args.file_key)
+    do_print("State key reverted to:", authoritative_key.replace(args.file_key+":", '', 1))
     if did_stash:
-        print("Old state saved to: ~stash")
+        do_print("Old state saved to: ~stash")
     _CURRENT_DATABASE.register_fa(args.file_key, '~last', True)
     _CURRENT_DATABASE.save()
     return [args.file_key, authoritative_key.replace(args.file_key+":", '', 1)]
@@ -275,7 +281,7 @@ def command_alias(args):
             _CURRENT_DATABASE.register_sa(filekey, statekey.replace(filekey+":", '', 1), args.link, True)
             _CURRENT_DATABASE.register_fa(filekey, '~last', True)
             msg = "Registered state alias: %s --> %s under file key: %s"%(args.link, statekey.replace(filekey+":", '', 1), filekey)
-    print(msg)
+    do_print(msg)
     _CURRENT_DATABASE.save()
 
 
@@ -284,31 +290,31 @@ def command_list(args):
     initdb()
     output = []
     if not args.filekey:
-        print("Showing all file keys", "and aliases" if args.aliases else '')
-        print()
+        do_print("Showing all file keys", "and aliases" if args.aliases else '')
+        do_print()
         for key in _CURRENT_DATABASE.file_keys:
             isfile = _CURRENT_DATABASE.file_keys[key][0]
             if not isfile:
-                print('File Key: ' if args.aliases else '', key, sep='')
+                do_print('File Key: ' if args.aliases else '', key, sep='')
                 output.append(key)
             elif args.aliases:
-                print("File Alias:", key, "(Alias of: %s)"%isfile)
+                do_print("File Alias:", key, "(Alias of: %s)"%isfile)
                 output.append(key)
     else:
         if args.filekey not in _CURRENT_DATABASE.file_keys:
             sys.exit("Unable to list: The requested file key does not exist in this database (%s)" %(args.filekey))
-        print("Showing all state keys", " and aliases" if args.aliases else '', " for file key ", args.filekey, sep='')
-        print()
+        do_print("Showing all state keys", " and aliases" if args.aliases else '', " for file key ", args.filekey, sep='')
+        do_print()
         args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
         for key in _CURRENT_DATABASE.state_keys:
             if _CURRENT_DATABASE.state_keys[key][1] == args.filekey:
                 isfile = _CURRENT_DATABASE.state_keys[key][0]
                 display_key = key.replace(args.filekey+":", '', 1)
                 if not isfile:
-                    print("State Key: " if args.aliases else '', display_key, sep='')
+                    do_print("State Key: " if args.aliases else '', display_key, sep='')
                     output.append(key)
                 elif args.aliases:
-                    print("State Alias:", display_key, "(Alias of: %s)"%isfile.replace(args.filekey+":", '', 1))
+                    do_print("State Alias:", display_key, "(Alias of: %s)"%isfile.replace(args.filekey+":", '', 1))
                     output.append(key)
     return [item for item in output]
 
@@ -357,9 +363,9 @@ def command_delete(args):
             ))
         del _CURRENT_DATABASE.file_keys[args.target]
         _CURRENT_DATABASE.save()
-        print("Deleted file key: %s"%args.target)
+        do_print("Deleted file key: %s"%args.target)
         if args.save:
-            print("File data saved to ~trash")
+            do_print("File data saved to ~trash")
 
     else:
         #when deleting a state key:
@@ -404,9 +410,9 @@ def command_delete(args):
         del _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target]
         _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
         _CURRENT_DATABASE.save()
-        print("Deleted state key: %s (File key: %s)"%(args.target, authoritative_key))
+        do_print("Deleted state key: %s (File key: %s)"%(args.target, authoritative_key))
         if args.save:
-            print("State data saved to ~trash")
+            do_print("State data saved to ~trash")
 
 
 def command_lookup(args):
@@ -425,7 +431,7 @@ def command_lookup(args):
     result = _CURRENT_DATABASE.resolve_key(keyheader+args.target, not args.filekey)
     if keyheader:
         result = result.replace(args.filekey+":", '', 1)
-    print(args.target, '-->', result)
+    do_print(args.target, '-->', result)
     return result
 
 
@@ -462,8 +468,8 @@ def command_recover(args):
     del _CURRENT_DATABASE.file_keys['~trash']
     _CURRENT_DATABASE.register_fa(filekey, '~last', True)
     _CURRENT_DATABASE.save()
-    print("Recovered file key:", filekey)
-    print("Aliases for this file key:", aliases)
+    do_print("Recovered file key:", filekey)
+    do_print("Aliases for this file key:", aliases)
 
 def command_clean(args):
     initdb()
@@ -620,9 +626,9 @@ def command_clean(args):
         sys.exit("No action taken.  Set at least one of the flags when using '$ quicksave clean'")
     _CURRENT_DATABASE.save()
     if len(msg):
-        print(msg[:-1])
+        do_print(msg[:-1])
     else:
-        print("Nothing to clean")
+        do_print("Nothing to clean")
 
 def command_status(args):
     initdb()
@@ -645,15 +651,15 @@ def command_status(args):
     args.filename.close()
     basefile = os.path.basename(args.filename.name)
     if infer:
-        print("Inferred file key:", args.file_key)
-    print("Status:", basefile,"-->",
+        do_print("Inferred file key:", args.file_key)
+    do_print("Status:", basefile,"-->",
         '"'+currentstate.replace(args.file_key+":", '', 1)+'"' if currentstate else "<New State>"
     )
 
 def command_help(args, helper):
     if not args.subcommand:
         helper['__main__']()
-        print("\nUse '$ quicksave help <subcommand>' for help with a specific subcommand")
+        do_print("\nUse '$ quicksave help <subcommand>' for help with a specific subcommand")
     elif args.subcommand =='__main__' or args.subcommand not in helper:
         sys.exit("Unknown subcommand name: %s"%args.subcommand)
     else:
@@ -664,6 +670,11 @@ def main(args_input=sys.argv[1:]):
         "quicksave",
         description="A very simple file versioning system.  Useful for quickly "+
         " maintaining a few versions of a file without setting up a full version control repository",
+    )
+    parser.add_argument(
+        '--return-result',
+        action='store_true',
+        help=argparse.SUPPRESS
     )
     subparsers = parser.add_subparsers()
     helper = {'__main__':parser.print_help}
@@ -944,7 +955,7 @@ def main(args_input=sys.argv[1:]):
         'show',
         description="Shows the current database path"
     )
-    show_parser.set_defaults(func = lambda _:print(initdb()))
+    show_parser.set_defaults(func = lambda args:initdb() if args.return_result else do_print(initdb()))
     helper['show'] = show_parser.print_help
 
     clean_parser = subparsers.add_parser(
@@ -1016,6 +1027,8 @@ def main(args_input=sys.argv[1:]):
     )
 
     args = parser.parse_args(args_input)
+    global do_print
+    do_print = lambda *_args, **kwargs: _do_print(not args.return_result, *_args, **kwargs)
     if 'func' not in dir(args):
         parser.print_help()
         sys.exit(2)
@@ -1027,7 +1040,8 @@ def main(args_input=sys.argv[1:]):
                                 " Try running `$ quicksave clean -w` to clean the database") from e
     except Exception as e:
         raise RuntimeError("Command failed!  Encountered an unknown exception!") from e
-    return result
+    if args.return_result:
+        return result
 
 
 if __name__ == '__main__':
