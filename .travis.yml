@@ -1,0 +1,13 @@
+language: python
+python:
+- '3.2'
+- '3.3'
+- '3.4'
+- '3.5'
+- 'pypy3'
+install:
+- if [ "${TRAVIS_PYTHON_VERSION}" -ne "3.2"]; then pip install coveralls; fi
+script:
+- if [ "${TRAVIS_PYTHON_VERSION}" -ne "3.2"]; then coverage run --source=quicksave -m unittest discover -v; else python3 -m unittest discover -v; fi
+after_success:
+- coveralls
