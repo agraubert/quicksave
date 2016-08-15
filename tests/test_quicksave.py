@@ -14,29 +14,39 @@ DATA = {}
 def random_string(upper=125):
     return "".join([chr(random.randint(65, upper)) for _ in range(20)])
 
+if "TemporaryDirectory" not in dir(tempfile):
+    def simple_tempdir():
+        output = lambda :None
+        output.name = tempfile.mkdtemp()
+        output.cleanup = lambda :rmtree(output.name)
+        return output
+    tempfile.TemporaryDirectory = simple_tempdir
+
 class test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        random.seed()
+        basepath = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
         cls.test_directory = tempfile.TemporaryDirectory()
         cls.db_directory = tempfile.TemporaryDirectory()
-        basepath = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
         cls.script_path = os.path.join(
             basepath,
             'quicksave',
             '__main__.py'
         )
-        sys.path.append(basepath)
         from quicksave.__main__ import configfile
-        copyfile(configfile, 'config_backup')
-        random.seed()
+        if os.path.isfile(configfile):
+            copyfile(configfile, 'config_backup')
         warnings.simplefilter('ignore', ResourceWarning)
 
     @classmethod
     def tearDownClass(cls):
         from quicksave.__main__ import configfile
-        copyfile('config_backup', configfile)
-        os.remove("config_backup")
+        if os.path.isfile('config_backup'):
+            copyfile('config_backup', configfile)
+            os.remove("config_backup")
         cls.test_directory.cleanup()
+        cls.db_directory.cleanup()
         warnings.resetwarnings()
 
     def test_compilation(self):
@@ -534,9 +544,8 @@ class test(unittest.TestCase):
         with self.assertRaises(SystemExit):
             main([
                 '--return-result',
-                'recover',
-                *DATA['all-file-handles']
-            ])
+                'recover'
+            ]+DATA['all-file-handles'])
         main([
             '--return-result',
             'recover',

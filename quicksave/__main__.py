@@ -4,6 +4,8 @@ import sys
 from shutil import copyfile, rmtree
 from hashlib import sha256
 
+if sys.version_info < (3,3):
+    FileNotFoundError = IOError
 try:
     from .qs_database import Database as db
 except ImportError:
@@ -29,7 +31,8 @@ def check_is_directory(argument):
     fullpath = os.path.abspath(argument)
     if os.path.isfile(fullpath):
         raise argparse.ArgumentTypeError("Path \"%s\" must be a directory"%argument)
-    os.makedirs(fullpath, exist_ok=True)
+    if not os.path.isdir(fullpath):
+        os.makedirs(fullpath)
     return fullpath
 
 def read_write_file_exists(argument):
