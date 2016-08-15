@@ -683,43 +683,21 @@ def command_clean(args):
     if args.rebuild_file_index:
         didop = True
         rebuilt = 0
-        joint_states = set()
-        redirection = {}
         for key in [key for key in _CURRENT_DATABASE.file_keys if not _CURRENT_DATABASE.file_keys[key][0]]:
             old_list = _CURRENT_DATABASE.file_keys[key][2]
             new_list = set()
-            redirection[key] = {
-                'files':{},
-                'keys': {}
-            }
             for statekey in [statekey for statekey in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[statekey][1]==key]:
                 state = _CURRENT_DATABASE.state_keys[statekey]
-                if state[2] and state[2] not in new_list:
+                if state[2] not in new_list:
                     new_list.add(state[2])
-                    redirection[key]['files'][state[2]] = ''+statekey
-                elif state[2]:
-                    redirection[key]['keys'][statekey] = redirection[key]['files'][state[2]]
-                    joint_states.add(''+statekey)
-            del redirection[key]['files']
+            if None in new_list:
+                new_list.remove(None)
             if len(old_list^new_list):
                 rebuilt+=1
                 _CURRENT_DATABASE.file_keys[2] = {item for item in new_list}
         if rebuilt:
             msg += "Rebuilt %d file keys with out-of-date indexes\n"%rebuilt
             result['rebuilt'] = rebuilt
-        if len(joint_states):
-            redirected = 0
-            for key in list(_CURRENT_DATABASE.state_keys):
-                if key in joint_states:
-                    del _CURRENT_DATABASE.state_keys[key]
-                elif _CURRENT_DATABASE.state_keys[key][0] in joint_states:
-                    entry = _CURRENT_DATABASE.state_keys[key]
-                    _CURRENT_DATABASE.state_keys[key][0] = redirection[entry[1]]['keys'][entry[0]]
-                    redirected += 1
-            msg += "Removed %d state keys with duplicate index entries, and forwarded %d aliases"%(
-                len(joint_states),
-                len(redirected)
-            )
     if not didop:
         sys.exit("No action taken.  Set at least one of the flags when using '$ quicksave clean'")
     _CURRENT_DATABASE.save()
