@@ -1,5 +1,7 @@
 # quicksave
 [![PyPI](https://img.shields.io/pypi/v/quicksave.svg)](https://pypi.python.org/pypi/quicksave)
+[![Build Status](https://travis-ci.org/agraubert/quicksave.svg?branch=master)](https://travis-ci.org/agraubert/quicksave)
+[![Coverage Status](https://coveralls.io/repos/github/agraubert/quicksave/badge.svg?branch=master)](https://coveralls.io/github/agraubert/quicksave?branch=master)
 
 A (very) simple file versioning system
 
