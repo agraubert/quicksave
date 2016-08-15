@@ -15,6 +15,10 @@ _SPECIAL_STATE = ['~stash', '~trash']
 _CURRENT_DATABASE = None
 configfile = os.path.join(os.path.expanduser('~'), '.quicksave_config')
 
+def _fetch_db():
+    initdb()
+    return _CURRENT_DATABASE
+
 def _do_print(PRINT_ENABLED, *args, **kwargs):
     if PRINT_ENABLED:
         print(*args, **kwargs)
@@ -481,7 +485,7 @@ def command_clean(args):
     initdb()
     didop = False
     msg = ''
-    results = {}
+    result = {}
     if args.walk_database:
         didop=True
         prune_folders = []
@@ -643,6 +647,7 @@ def command_clean(args):
         do_print(msg[:-1])
     else:
         do_print("Nothing to clean")
+    return result
 
 def command_status(args):
     initdb()

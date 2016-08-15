@@ -3,9 +3,10 @@ import tempfile
 import sys
 import os
 from py_compile import compile
-from shutil import copyfile
+from shutil import copyfile, rmtree
 import random
 from  hashlib import sha256
+import warnings
 from filecmp import cmp
 
 DATA = {}
@@ -28,6 +29,7 @@ class test(unittest.TestCase):
         from quicksave.__main__ import configfile
         copyfile(configfile, 'config_backup')
         random.seed()
+        warnings.simplefilter('ignore', ResourceWarning)
 
     @classmethod
     def tearDownClass(cls):
@@ -35,6 +37,7 @@ class test(unittest.TestCase):
         copyfile('config_backup', configfile)
         os.remove("config_backup")
         cls.test_directory.cleanup()
+        warnings.resetwarnings()
 
     def test_compilation(self):
         compiled_path = compile(self.script_path)
@@ -551,8 +554,24 @@ class test(unittest.TestCase):
             ])
 
     def test_j_clean(self):
-        from quicksave.__main__ import main, _CURRENT_DATABASE
+        from quicksave.__main__ import main, _fetch_db
 
+        #create an unused folder in the database
+        folderpath = os.path.join(self.db_directory.name, random_string(90))
+        os.mkdir(folderpath)
+
+        #Create an orphaned database file
+        database = _fetch_db()
+        filepath = os.path.join(
+            self.db_directory.name,
+            database.file_keys[DATA['register-filekey']][1],
+            random_string(90)
+        )
+        writer = open(filepath, 'wb')
+        writer.write(os.urandom(32))
+        writer.close()
+
+        #Create an unlinked file key
         writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
         writer.write(os.urandom(4096))
         writer.close()
@@ -561,23 +580,161 @@ class test(unittest.TestCase):
             'register',
             writer.name
         ])
-        del _CURRENT_DATABASE.file_keys[result[0]]
-        for item in result[1]:
-            del _CURRENT_DATABASE.file_keys[item]
-
-        writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
-        writer.write(os.urandom(4096))
-        writer.close()
-        result = main([
-            '--return-result',
-            'register',
-            writer.name
-        ])
-        os.remove(os.path.join(
-            _CURRENT_DATABASE.base_dir,
-            _CURRENT_DATABASE.file_keys[result[0]][1],
-            _CURRENT_DATABASE.state_keys[result[2]][2]
+        database = _fetch_db()
+        rmtree(os.path.join(
+            database.base_dir,
+            database.file_keys[result[0]][1],
         ))
-        
+        unlinked_file_key = ""+result[0]
+
+        #Create an unlinked state key
+        writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        writer.write(os.urandom(4096))
+        writer.close()
+        result = main([
+            '--return-result',
+            'register',
+            writer.name
+        ])
+        database = _fetch_db()
+        os.remove(os.path.join(
+            database.base_dir,
+            database.file_keys[result[0]][1],
+            database.state_keys[result[0]+":"+result[2]][2]
+        ))
+        unlinked_state_key = result[0]+":"+result[2]
+
+        #Create some trash keys
+        statekeys = main([
+            '--return-result',
+            'list',
+            'recovered'
+        ])
+        main([
+            '--return-result',
+            'delete-key',
+            'recovered',
+            statekeys[0]
+        ])
+        target = main([
+            '--return-result',
+            'lookup',
+            'recovered'
+        ])
+        main([
+            '--return-result',
+            'delete-key',
+            target
+        ])
+
+        #create some duplicates
+        #Create an unlinked state key
+        writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        writer.write(os.urandom(4096))
+        writer.close()
+        main([
+            '--return-result',
+            'register',
+            writer.name
+        ])
+        result = main([
+            '--return-result',
+            'save',
+            writer.name,
+            '--allow-duplicate'
+        ])
+        duplicate_state_key = result[0]+":"+result[1]
+
+        #finaly run the clean
+        result = main([
+            '--return-result',
+            'clean',
+            '-dtw'
+        ])
+        # print(result)
+
+        self.assertTrue("prune_folders" in result)
+        self.assertEqual(len(result['prune_folders']), 1)
+        self.assertTrue(os.path.basename(folderpath) in result['prune_folders'])
+
+        self.assertTrue('prune_files' in result)
+        self.assertEqual(len(result['prune_files']), 1)
+        self.assertTrue(os.path.relpath(filepath, self.db_directory.name) in result['prune_files'])
+
+        self.assertTrue('prune_filekeys' in result)
+        self.assertEqual(len(result['prune_filekeys']), 1)
+        self.assertTrue(unlinked_file_key in result['prune_filekeys'])
+
+        self.assertTrue('prune_statekeys' in result)
+        self.assertEqual(len(result['prune_statekeys']), 1)
+        self.assertTrue(unlinked_state_key in result['prune_statekeys'])
+
+        self.assertTrue('trash_file' in result)
+        self.assertFalse(result['trash_file'])
+
+        self.assertTrue('trash_state' in result)
+        self.assertEqual(result['trash_state'][0], 2)
+
+        self.assertTrue('deduplicate' in result)
+        self.assertEqual(len(result['deduplicate']), 1)
+        self.assertTrue(duplicate_state_key in result['deduplicate'])
+
     def test_k_status(self):
-        pass
+        from quicksave.__main__ import main
+
+        writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        writer.write(os.urandom(4096))
+        writer.close()
+        self.assertFalse(main([
+            '--return-result',
+            'status',
+            writer.name,
+            '-k',
+            DATA['register-filekey']
+        ])[1])
+        statename = main([
+            '--return-result',
+            'list',
+            DATA['register-filekey']
+        ])
+        statename.pop(statename.index("~stash"))
+        statename=statename[0]
+        main([
+            '--return-result',
+            'revert',
+            writer.name,
+            statename,
+            '-k',
+            DATA['register-filekey']
+        ])
+        state = main([
+            '--return-result',
+            'status',
+            writer.name,
+            '-k',
+            DATA['register-filekey']
+        ])[1]
+        self.assertEqual(state, DATA['register-filekey']+":"+statename)
+        main([
+            '--return-result',
+            'revert',
+            writer.name,
+            '~stash',
+            '-k',
+            DATA['register-filekey']
+        ])
+        result = main([
+            '--return-result',
+            'save',
+            writer.name,
+            '-k',
+            DATA['register-filekey']
+        ])
+        state = main([
+            '--return-result',
+            'status',
+            writer.name,
+            '-k',
+            DATA['register-filekey']
+        ])[1]
+        self.assertEqual(state, DATA['register-filekey']+":"+result[1])
