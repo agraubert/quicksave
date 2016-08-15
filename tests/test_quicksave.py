@@ -654,20 +654,59 @@ class test(unittest.TestCase):
         ])
         duplicate_state_key = result[0]+":"+result[1]
 
+        #create an orphaned state, and some invalid file aliases
+        writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        writer.write(os.urandom(4096))
+        writer.close()
+        register_result = main([
+            '--return-result',
+            'register',
+            writer.name
+        ])
+        writer = open(writer.name, 'w+b')
+        writer.write(os.urandom(4096))
+        writer.close()
+        save_result = main([
+            '--return-result',
+            'save',
+            writer.name
+        ])
+        database = _fetch_db()
+        del database.file_keys[register_result[0]]
+        del database.state_keys[register_result[0]+":"+save_result[1]]
+        database.save()
+        orphan_states = {state for state in database.state_keys if state.startswith(register_result[0])}
+        invalid_file_aliases = set(register_result[1])
+
+        #Create an invalid state alias, and break the file index
+        writer = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        writer.write(os.urandom(4096))
+        writer.close()
+        register_result = main([
+            '--return-result',
+            'register',
+            writer.name
+        ])
+        database = _fetch_db()
+        _statekey = register_result[0]+":"+register_result[2]
+        del database.state_keys[_statekey]
+        database.file_keys[register_result[0]][2] = 'fish'
+        database.save()
+        invalid_state_aliases = {key for key in database.state_keys if database.state_keys[key][0]==_statekey}
+
         #finaly run the clean
         result = main([
             '--return-result',
             'clean',
-            '-dtw'
+            '-dtwras'
         ])
-        # print(result)
 
         self.assertTrue("prune_folders" in result)
-        self.assertEqual(len(result['prune_folders']), 1)
+        self.assertEqual(len(result['prune_folders']), 2)
         self.assertTrue(os.path.basename(folderpath) in result['prune_folders'])
 
         self.assertTrue('prune_files' in result)
-        self.assertEqual(len(result['prune_files']), 1)
+        self.assertEqual(len(result['prune_files']), 2)
         self.assertTrue(os.path.relpath(filepath, self.db_directory.name) in result['prune_files'])
 
         self.assertTrue('prune_filekeys' in result)
@@ -687,6 +726,21 @@ class test(unittest.TestCase):
         self.assertTrue('deduplicate' in result)
         self.assertEqual(len(result['deduplicate']), 1)
         self.assertTrue(duplicate_state_key in result['deduplicate'])
+
+        self.assertTrue('states' in result)
+        self.assertEqual(len(result['states']), 5)
+        self.assertFalse(set(result['states'])^orphan_states)
+
+        self.assertTrue('file_aliases' in result)
+        self.assertEqual(len(result['file_aliases']), 2)
+        self.assertFalse(set(result['file_aliases'])^invalid_file_aliases)
+
+        self.assertTrue('state_aliases' in result)
+        self.assertEqual(len(result['state_aliases']), 2)
+        self.assertFalse(set(result['state_aliases'])^invalid_state_aliases)
+
+        self.assertTrue('rebuilt' in result)
+        self.assertEqual(result['rebuilt'], 1)
 
     def test_k_status(self):
         from quicksave.__main__ import main
