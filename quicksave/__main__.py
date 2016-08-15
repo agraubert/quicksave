@@ -643,6 +643,83 @@ def command_clean(args):
                 didforward
             )
             result['deduplicate'] = forward
+    if args.states:
+        didop = True
+        keys = []
+        for key in list(_CURRENT_DATABASE.state_keys):
+            if _CURRENT_DATABASE.state_keys[key][1] not in _CURRENT_DATABASE.file_keys:
+                keys.append(""+key)
+                del _CURRENT_DATABASE.state_keys[key]
+        if len(keys):
+            msg += "Removed the following %d orphaned state keys and aliases: %s\n"%(
+                len(keys),
+                str([key for key in keys])
+            )
+            result['states'] = keys
+    if args.aliases:
+        didop = True
+        state_keys = []
+        file_keys = []
+        for key in [key for key in _CURRENT_DATABASE.file_keys if _CURRENT_DATABASE.file_keys[key][0]]:
+            if _CURRENT_DATABASE.file_keys[key][0] not in _CURRENT_DATABASE.file_keys:
+                file_keys.append(""+key)
+                del _CURRENT_DATABASE.file_keys[key]
+        for key in [key for key in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[key][0]]:
+            if _CURRENT_DATABASE.state_keys[key][0] not in _CURRENT_DATABASE.state_keys:
+                state_keys.append(""+key)
+                del _CURRENT_DATABASE.state_keys[key]
+        if len(file_keys):
+            msg += "Removed the following %d invalid file aliases: %s\n"%(
+                len(file_keys),
+                str([key for key in file_keys])
+            )
+            result['file_aliases'] = file_keys
+        if len(state_keys):
+            msg += "Removed the following %d invalid state aliases: %s\n"%(
+                len(state_keys),
+                str([key for key in state_keys])
+            )
+            result['state_aliases'] = state_keys
+    if args.rebuild_file_index:
+        didop = True
+        rebuilt = 0
+        joint_states = set()
+        redirection = {}
+        for key in [key for key in _CURRENT_DATABASE.file_keys if not _CURRENT_DATABASE.file_keys[key][0]]:
+            old_list = _CURRENT_DATABASE.file_keys[key][2]
+            new_list = set()
+            redirection[key] = {
+                'files':{},
+                'keys': {}
+            }
+            for statekey in [statekey for statekey in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[statekey][1]==key]:
+                state = _CURRENT_DATABASE.state_keys[statekey]
+                if state[2] and state[2] not in new_list:
+                    new_list.add(state[2])
+                    redirection[key]['files'][state[2]] = ''+statekey
+                elif state[2]:
+                    redirection[key]['keys'][statekey] = redirection[key]['files'][state[2]]
+                    joint_states.add(''+statekey)
+            del redirection[key]['files']
+            if len(old_list^new_list):
+                rebuilt+=1
+                _CURRENT_DATABASE.file_keys[2] = {item for item in new_list}
+        if rebuilt:
+            msg += "Rebuilt %d file keys with out-of-date indexes\n"%rebuilt
+            result['rebuilt'] = rebuilt
+        if len(joint_states):
+            redirected = 0
+            for key in list(_CURRENT_DATABASE.state_keys):
+                if key in joint_states:
+                    del _CURRENT_DATABASE.state_keys[key]
+                elif _CURRENT_DATABASE.state_keys[key][0] in joint_states:
+                    entry = _CURRENT_DATABASE.state_keys[key]
+                    _CURRENT_DATABASE.state_keys[key][0] = redirection[entry[1]]['keys'][entry[0]]
+                    redirected += 1
+            msg += "Removed %d state keys with duplicate index entries, and forwarded %d aliases"%(
+                len(joint_states),
+                len(redirected)
+            )
     if not didop:
         sys.exit("No action taken.  Set at least one of the flags when using '$ quicksave clean'")
     _CURRENT_DATABASE.save()
@@ -1014,6 +1091,22 @@ def main(args_input=sys.argv[1:]):
         "within the directory.  Files found in the database directory that do not "+
         "exist in the manifest are deleted.  Files listed in the manifest which cannot "+
         "be found in the directory will have their corresponding state key (and its aliases) deleted"
+    )
+    clean_parser.add_argument(
+        '-a', '--aliases',
+        action='store_true',
+        help="Checks for and removes any aliases which point to invalid or nonexistent keys"
+    )
+    clean_parser.add_argument(
+        '-s', '--states',
+        action='store_true',
+        help="Checks for and removes any state keys/aliases with missing parent file keys"
+    )
+    clean_parser.add_argument(
+        '-r', '--rebuild-file-index',
+        action='store_true',
+        help="Checks the file index for each file key against the filename registered to each state key. "+
+        "The file index is rebuilt using this list of filenames."
     )
 
     status_parser = subparsers.add_parser(
