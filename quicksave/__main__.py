@@ -578,16 +578,17 @@ def command_clean(args):
                     prune_folders.append(''+target)
             else:
                 for target in path[2]:
-                    if target in manifest[path[0]]:
+                    if path[0] in manifest and target in manifest[path[0]]:
                         manifest[path[0]][target][1] = True
                     else:
-                        os.remove(os.path.join(
-                            os.path.abspath(_CURRENT_DATABASE.base_dir),
-                            os.path.basename(path[0]),
+                        full_filepath = os.path.join(
+                            path[0],
                             target
-                        ))
+                        )
+                        if os.path.isfile(full_filepath):
+                            os.remove(full_filepath)
                         prune_files.append(os.path.join(
-                            os.path.basename(path[0]),
+                            os.path.relpath(path[0], os.path.abspath(_CURRENT_DATABASE.base_dir)),
                             target
                         ))
         #filekeys phase
