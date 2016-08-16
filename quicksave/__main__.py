@@ -495,7 +495,7 @@ def command_clean(args):
     didop = False
     msg = ''
     result = {}
-    if args.states:
+    if args.states or args.clean_all:
         didop = True
         keys = []
         for key in list(_CURRENT_DATABASE.state_keys):
@@ -508,7 +508,7 @@ def command_clean(args):
                 str([key for key in keys])
             )
             result['states'] = keys
-    if args.aliases:
+    if args.aliases or args.clean_all:
         didop = True
         state_keys = []
         file_keys = []
@@ -532,7 +532,7 @@ def command_clean(args):
                 str([key for key in state_keys])
             )
             result['state_aliases'] = state_keys
-    if args.rebuild_file_index:
+    if args.rebuild_file_index or args.clean_all:
         didop = True
         rebuilt = 0
         for key in [key for key in _CURRENT_DATABASE.file_keys if not _CURRENT_DATABASE.file_keys[key][0]]:
@@ -550,7 +550,7 @@ def command_clean(args):
         if rebuilt:
             msg += "Rebuilt %d file keys with out-of-date indexes\n"%rebuilt
             result['rebuilt'] = rebuilt
-    if args.walk_database:
+    if args.walk_database or args.clean_all:
         didop=True
         prune_folders = []
         prune_files = []
@@ -621,7 +621,7 @@ def command_clean(args):
         if len(prune_statekeys):
             msg += "Removed the following %d state keys with missing data files:%s\n"%(len(prune_statekeys), str(prune_statekeys))
             result['prune_statekeys'] = prune_statekeys
-    if args.trash:
+    if args.trash or args.clean_all:
         didop = True
         statekeys = 0
         statealiases = 0
@@ -662,7 +662,7 @@ def command_clean(args):
             del _CURRENT_DATABASE.file_keys['~trash']
             msg+="Cleaned the ~trash file key and %d aliases.\n"%trashaliases
             result['trash_file'] = trashaliases
-    if args.deduplicate:
+    if args.deduplicate or args.clean_all:
         didop = True
         duplicates = {} #file key -> hash -> original state key
         forward = {} #duplicate state key -> original state key
@@ -1101,6 +1101,11 @@ def main(args_input=sys.argv[1:]):
         action='store_true',
         help="Checks the file index for each file key against the filename registered to each state key. "+
         "The file index is rebuilt using this list of filenames."
+    )
+    clean_parser.add_argument(
+        '--clean-all',
+        action='store_true',
+        help="Runs all cleaning subroutines.  Equivalent to -tdwasr"
     )
 
     status_parser = subparsers.add_parser(
