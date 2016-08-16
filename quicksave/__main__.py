@@ -631,7 +631,10 @@ def command_clean(args):
             del _CURRENT_DATABASE.file_keys[key]
         for key in [key for key in _CURRENT_DATABASE.state_keys]:
             if key.startswith("~trash:"): #this state key belongs to the trash file key
-                statekeys+=1
+                if not _CURRENT_DATABASE.state_keys[key][0]:
+                    statekeys+=1
+                else:
+                    statealiases+=1
                 del _CURRENT_DATABASE.state_keys[key]
             elif key.endswith(":~trash"): #this is a trash state key, but it belongs to a regular key
                 datafile = _CURRENT_DATABASE.state_keys[key][2]
@@ -643,7 +646,7 @@ def command_clean(args):
                 ))
                 statekeys+=1
                 del _CURRENT_DATABASE.state_keys[key]
-            else:
+            else: #alias to a trash state key
                 entry = [item for item in _CURRENT_DATABASE.state_keys[key]]
                 if entry[0] and entry[0].count('~trash'):
                     statealiases+=1
