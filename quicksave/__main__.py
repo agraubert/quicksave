@@ -35,12 +35,6 @@ def check_is_directory(argument):
         os.makedirs(fullpath)
     return fullpath
 
-def read_write_file_exists(argument):
-    fullpath = os.path.abspath(argument)
-    if not os.path.isfile(fullpath):
-        raise argparse.ArgumentTypeError("Path \"%s\" must be a file"%argument)
-    return open(fullpath, 'a+b')
-
 def initdb():
     global _CURRENT_DATABASE
     database_path = ''
@@ -302,10 +296,17 @@ def command_alias(args):
 def command_list(args):
     initdb()
     output = []
+    if args.target:
+        args.aliases = True
     if not args.filekey:
+        if args.target and args.target not in _CURRENT_DATABASE.file_keys:
+            sys.exit("Unable to list: The provided target file key does not exist in this database (%s)"%args.target)
         do_print("Showing all file keys", "and aliases" if args.aliases else '')
         do_print()
-        for key in _CURRENT_DATABASE.file_keys:
+        if args.target:
+            args.target = _CURRENT_DATABASE.resolve_key(args.target, True)
+        source = _CURRENT_DATABASE.file_keys if not args.target else filter(lambda x:x==args.target or _CURRENT_DATABASE.file_keys[x][0]==args.target, _CURRENT_DATABASE.file_keys)
+        for key in source:
             isfile = _CURRENT_DATABASE.file_keys[key][0]
             if not isfile:
                 do_print('File Key: ' if args.aliases else '', key, sep='')
@@ -316,10 +317,15 @@ def command_list(args):
     else:
         if args.filekey not in _CURRENT_DATABASE.file_keys:
             sys.exit("Unable to list: The requested file key does not exist in this database (%s)" %(args.filekey))
+        args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
+        if args.target:
+            args.target = _CURRENT_DATABASE.resolve_key(args.filekey+":"+args.target, False)
+        if args.target and args.target not in _CURRENT_DATABASE.state_keys:
+            sys.exit("Unable to list: The provided target state key does not exist in this database (%s)"%args.target)
         do_print("Showing all state keys", " and aliases" if args.aliases else '', " for file key ", args.filekey, sep='')
         do_print()
-        args.filekey = _CURRENT_DATABASE.resolve_key(args.filekey, True)
-        for key in _CURRENT_DATABASE.state_keys:
+        source = _CURRENT_DATABASE.state_keys if not args.target else filter(lambda x:x==args.target or _CURRENT_DATABASE.state_keys[x][0]==args.target, _CURRENT_DATABASE.state_keys)
+        for key in source:
             if _CURRENT_DATABASE.state_keys[key][1] == args.filekey:
                 isfile = _CURRENT_DATABASE.state_keys[key][0]
                 display_key = key.replace(args.filekey+":", '', 1)
@@ -951,6 +957,13 @@ def main(args_input=sys.argv[1:]):
         '-a', '--aliases',
         action='store_true',
         help='Display key aliases in addition to just keys'
+    )
+    list_parser.add_argument(
+        '-t', '--target',
+        help="Only display aliases for the provided target key.  Implies the -a option. "+
+        "If filekey is provided, then this must be a state key or alias. "+
+        "Otherwise, this must be a file key or alias",
+        default=None
     )
 
     delete_parser = subparsers.add_parser(

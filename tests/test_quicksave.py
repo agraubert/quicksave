@@ -412,6 +412,30 @@ class test(unittest.TestCase):
         self.assertGreater(len(result), 3)
         DATA['all-state-handles'] = [item for item in result]
 
+        register_filekey_handles = set(main([
+            '--return-result',
+            'list',
+            '-t',
+            DATA['register-filekey']
+        ]))
+        temp_filekey_handles = set(main([
+            '--return-result',
+            'list',
+            '-t',
+            DATA['temp-filekey']
+        ]))
+        self.assertSetEqual(set(DATA['all-file-handles']), register_filekey_handles|temp_filekey_handles)
+        all_state_handles = set()
+        for key in main(['--return-result', 'list', DATA['register-filekey']]):
+            all_state_handles|=set(main([
+                '--return-result',
+                'list',
+                DATA['register-filekey'],
+                '-t',
+                key
+            ]))
+        self.assertSetEqual(set(DATA['all-state-handles']), all_state_handles)
+
     def test_g_delete(self):
         from quicksave.__main__ import main
 
