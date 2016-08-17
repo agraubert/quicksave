@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import csv
 from shutil import copyfile, rmtree
 from hashlib import sha256
 
@@ -15,15 +16,35 @@ except ImportError:
 _SPECIAL_FILE = ['~trash', '~last']
 _SPECIAL_STATE = ['~stash', '~trash']
 _CURRENT_DATABASE = None
+_FLAGS = {}
 configfile = os.path.join(os.path.expanduser('~'), '.quicksave_config')
 
-def _fetch_db():
-    initdb()
+def _fetch_db(init=True):
+    if init:
+        initdb()
     return _CURRENT_DATABASE
 
 def _do_print(PRINT_ENABLED, *args, **kwargs):
     if PRINT_ENABLED:
         print(*args, **kwargs)
+
+def _checkflag(flagname, default):
+    if flagname in _CURRENT_DATABASE.flags:
+        return _CURRENT_DATABASE.flags[flagname]
+    if flagname in _FLAGS:
+        return _FLAGS[flagname]
+    return default
+
+def _loadflags(raw_reader):
+    reader = csv.reader(raw_reader, delimiter='\t')
+    for line in reader:
+        _FLAGS[line[0]] = line[1]
+    raw_reader.close()
+
+def _fetch_flags(init=True):
+    if init:
+        initdb()
+    return _FLAGS
 
 do_print = None
 
@@ -41,11 +62,11 @@ def initdb():
     msg = "No database loaded.  Please run '$ quicksave init' to create or load a database"
     if os.path.isfile(configfile):
         reader = open(configfile)
-        database_path = reader.read().strip()
-        reader.close()
+        database_path = reader.readline().strip()
         if database_path != "<N/A>":
             try:
                 _CURRENT_DATABASE = db(database_path)
+                _loadflags(reader)
             except FileNotFoundError:
                 do_print("Bad database path:", database_path)
                 msg = "Unable to open the database.  It may have been deleted, or the config file may have been manually edited. Run '$ quicksave init <databse path>' to resolve"
@@ -72,9 +93,11 @@ def fetchstate(hashalias, filekey):
     return None
 
 def command_init(args):
-    writer = open(configfile, mode='w')
-    writer.write(args.database_path+'\n')
-    writer.close()
+    raw_writer = open(configfile, mode='w')
+    raw_writer.write(args.database_path+'\n')
+    writer = csv.writer(raw_writer, delimiter='\t', lineterminator='\n')
+    writer.writerows([[key,_FLAGS[key]] for key in _FLAGS])
+    raw_writer.close()
     return args.database_path
 
 def command_register(args):
@@ -181,6 +204,7 @@ def command_revert(args):
     initdb()
     infer = not bool(args.file_key)
     did_stash = False
+    args.stash = args.stash and _checkflag('revert.stash', '1')=='1'
     if infer:
         filepath = os.path.abspath(args.filename.name)
         if filepath in _CURRENT_DATABASE.file_keys:
@@ -339,6 +363,8 @@ def command_list(args):
 
 def command_delete(args):
     initdb()
+    didtrash = False
+    args.save = args.save and _checkflag('delete.trash', '1')=='1'
     if not args.filekey:
         #when deleting a file key:
         #   - Remove the data folder for the current ~trash entry
@@ -353,6 +379,7 @@ def command_delete(args):
         if args.target == '~trash':
             sys.exit("Unable to directly delete ~trash keys.  Use '$ quicksave clean -t' to clean all ~trash keys")
         if args.save and '~trash' in _CURRENT_DATABASE.file_keys:
+            didtrash = True
             rmtree(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
                 _CURRENT_DATABASE.file_keys['~trash'][1]
@@ -383,7 +410,7 @@ def command_delete(args):
         del _CURRENT_DATABASE.file_keys[args.target]
         _CURRENT_DATABASE.save()
         do_print("Deleted file key: %s"%args.target)
-        if args.save:
+        if didtrash:
             do_print("File data saved to ~trash")
 
     else:
@@ -401,6 +428,7 @@ def command_delete(args):
         if args.target == '~trash':
             sys.exit("Unable to directly delete ~trash keys.  Use '$ quicksave clean -t' to clean all ~trash keys")
         if args.save and authoritative_key+":~trash" in _CURRENT_DATABASE.state_keys:
+            didtrash = True
             os.remove(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
                 _CURRENT_DATABASE.file_keys[authoritative_key][1],
@@ -430,7 +458,7 @@ def command_delete(args):
         _CURRENT_DATABASE.register_fa(authoritative_key, '~last', True)
         _CURRENT_DATABASE.save()
         do_print("Deleted state key: %s (File key: %s)"%(args.target, authoritative_key))
-        if args.save:
+        if didtrash:
             do_print("State data saved to ~trash")
 
 
@@ -743,6 +771,50 @@ def command_status(args):
         '"'+currentstate.replace(args.file_key+":", '', 1)+'"' if currentstate else "<New State>"
     )
     return [args.file_key, currentstate]
+
+def command_config(args):
+    initdb()
+    if args.value: #set config
+        if args._global:
+            _FLAGS[args.key] = args.value
+            raw_writer = open(configfile, mode='w')
+            raw_writer.write(_CURRENT_DATABASE.base_dir+'\n')
+            writer = csv.writer(raw_writer, delimiter='\t', lineterminator='\n')
+            writer.writerows([[key,_FLAGS[key]] for key in _FLAGS])
+            raw_writer.close()
+        else:
+            _CURRENT_DATABASE.flags[args.key] = args.value
+            _CURRENT_DATABASE.save()
+    else: #read config
+        if args.clear:
+            if args._global:
+                if args.key not in _FLAGS:
+                    sys.exit("Unable to clear setting: The requested key (%s) is not set in the global configuration"%args.key)
+                del _FLAGS[args.key]
+                raw_writer = open(configfile, mode='w')
+                raw_writer.write(_CURRENT_DATABASE.base_dir+'\n')
+                writer = csv.writer(raw_writer, delimiter='\t', lineterminator='\n')
+                writer.writerows([[key,_FLAGS[key]] for key in _FLAGS])
+                raw_writer.close()
+            else:
+                if args.key not in _CURRENT_DATABASE.flags:
+                    sys.exit("Unable to clear setting: The requested key (%s) is not set in the database configuration"%args.key)
+                del _CURRENT_DATABASE.flags[args.key]
+                _CURRENT_DATABASE.save()
+        else:
+            do_print("Checking status of the requested key:", args.key)
+            islocal = False
+            do_print()
+            if args.key in _CURRENT_DATABASE.flags:
+                islocal=True
+                do_print("* Database setting:", _CURRENT_DATABASE.flags[args.key])
+            if args.key in _FLAGS:
+                do_print(' ' if islocal else '*', 'Global setting:', _FLAGS[args.key])
+    return [
+        args.key,
+        _FLAGS[args.key] if args.key in _FLAGS else None,
+        _CURRENT_DATABASE.flags[args.key] if args.key in _CURRENT_DATABASE.flags else None
+    ]
 
 def command_help(args, helper):
     if not args.subcommand:
@@ -1127,6 +1199,36 @@ def main(args_input=sys.argv[1:]):
         "If neither the filepath nor the filename match any file key aliases in this database,\n"+
         "quicksave will require the user to provide this option.",
         default=None
+    )
+
+    config_parser = subparsers.add_parser(
+        'config',
+        description="Sets or checks the current configuration of quicksave"
+    )
+    config_parser.set_defaults(func=command_config)
+    helper['config'] = config_parser.print_help
+    config_parser.add_argument(
+        'key',
+        help="The name of the setting to check or set"
+    )
+    config_parser.add_argument(
+        'value',
+        nargs='?',
+        help="The value to set.  If not specified, read the current setting",
+        default=None
+    )
+    config_parser.add_argument(
+        '--global',
+        action='store_true',
+        help="Saves the setting to the global configuration instead of the current database's configuration. "+
+        "This does not apply when reading configuration (when reading configuration, both global and database values are displayed).",
+        dest="_global"
+    )
+    config_parser.add_argument(
+        '--clear',
+        action='store_true',
+        help="Clear the provided key from the database configuration. This "+
+        "does not apply when setting configuration"
     )
 
     help_parser = subparsers.add_parser(

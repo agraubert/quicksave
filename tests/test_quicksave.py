@@ -62,6 +62,10 @@ class test(unittest.TestCase):
             'init',
             self.db_directory.name
         ]), self.db_directory.name)
+        self.assertEqual(main([
+            '--return-result',
+            'show'
+        ]), self.db_directory.name)
 
     def test_b_register(self):
         from quicksave.__main__ import main
@@ -825,3 +829,57 @@ class test(unittest.TestCase):
             DATA['register-filekey']
         ])[1]
         self.assertEqual(state, DATA['register-filekey']+":"+result[1])
+
+    def test_l_config(self):
+        from quicksave.__main__ import main, _fetch_db, _fetch_flags
+
+        test_global= {}
+        test_db = {}
+        reference_global = {}
+        reference_db = {}
+        for trial in range(100):
+            key = ''
+            command = ['--return-result', 'config']
+            if trial and not trial%10:
+                if trial%2:
+                    key = {k for k in test_global}.pop()
+                    command += [key, '--clear', '--global']
+                    del reference_global[key]
+                else:
+                    key = {k for k in test_db}.pop()
+                    command += [key, '--clear']
+                    del reference_db[key]
+            else:
+                key = random_string()
+                value = random_string()
+                command += [key, value]
+                if trial%2:
+                    command.append('--global')
+                    reference_global[key] = value
+                else:
+                    reference_db[key] = value
+            result = main(command)
+            if result[1]:
+                test_global[result[0]] = result[1]
+            elif result[0] in test_global:
+                del test_global[result[0]]
+            if result[2]:
+                test_db[result[0]] = result[2]
+            elif result[0] in test_db:
+                del test_db[result[0]]
+            self.assertDictEqual(reference_global, test_global)
+            self.assertDictEqual(reference_db, test_db)
+        for key in reference_global:
+            self.assertEqual(reference_global[key], main([
+                '--return-result',
+                'config',
+                key
+            ])[1])
+        for key in reference_db:
+            self.assertEqual(reference_db[key], main([
+                '--return-result',
+                'config',
+                key
+            ])[2])
+        self.assertDictEqual(reference_db, _fetch_db().flags)
+        self.assertDictEqual(reference_global, _fetch_flags(False))

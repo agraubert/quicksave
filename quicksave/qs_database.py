@@ -28,6 +28,7 @@ class Database:
         self.data_folders = set() #a set of used data folders
         self.file_keys = {} #key: [None, data folder, set of data files] or alias: [authoriative key, None, None]
         self.state_keys = {} #key: [None, file key, data file] or alias: [authoriative key, file key, None]
+        self.flags = {}
         if not (os.path.isdir(self.base_dir) and
                     os.path.isfile(os.path.join(
                         self.base_dir,
@@ -77,6 +78,8 @@ class Database:
                         data[3],
                         None
                     ]
+                elif data[0] == 'CONFIG':
+                    self.flags[data[1]] = data[2]
             configreader.close()
     def register_fk(self, filename):
         (filepath, root_name) = os.path.split(filename)
@@ -156,6 +159,8 @@ class Database:
                 writer.writerow(['SA', key, entry[0], entry[1]])
             else:
                 writer.writerow(['SK', key, entry[1], entry[2]])
+        for key in self.flags:
+            writer.writerow(['CONFIG', key, self.flags[key]])
         configwriter.close()
 
     def resolve_key(self, alias, isfile):
