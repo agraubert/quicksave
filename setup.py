@@ -5,7 +5,7 @@ import re
 long_desc = "A (very) simple file versioning system"
 
 
-if not os.path.isfiasdfsadfle("README.rst"):
+if not os.path.isfile("README.rst"):
     import pypandoc
     pypandoc.convert_file("README.md", 'rst', outputfile="README.rst")
 reader = open("README.rst", mode='r')
