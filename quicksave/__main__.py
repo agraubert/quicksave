@@ -379,7 +379,6 @@ def command_delete(args):
         if args.target == '~trash':
             sys.exit("Unable to directly delete ~trash keys.  Use '$ quicksave clean -t' to clean all ~trash keys")
         if args.save and '~trash' in _CURRENT_DATABASE.file_keys:
-            didtrash = True
             rmtree(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
                 _CURRENT_DATABASE.file_keys['~trash'][1]
@@ -401,6 +400,7 @@ def command_delete(args):
                 _CURRENT_DATABASE.state_keys[key.replace(args.target, '~trash', 1)] = [item for item in entry]
             del _CURRENT_DATABASE.state_keys[key]
         if args.save:
+            didtrash = True
             _CURRENT_DATABASE.file_keys['~trash'] = [item for item in _CURRENT_DATABASE.file_keys[args.target]]
         else:
             rmtree(os.path.join(
@@ -428,7 +428,6 @@ def command_delete(args):
         if args.target == '~trash':
             sys.exit("Unable to directly delete ~trash keys.  Use '$ quicksave clean -t' to clean all ~trash keys")
         if args.save and authoritative_key+":~trash" in _CURRENT_DATABASE.state_keys:
-            didtrash = True
             os.remove(os.path.join(
                 os.path.abspath(_CURRENT_DATABASE.base_dir),
                 _CURRENT_DATABASE.file_keys[authoritative_key][1],
@@ -444,6 +443,7 @@ def command_delete(args):
         for key in [key for key in _CURRENT_DATABASE.state_keys if _CURRENT_DATABASE.state_keys[key][0]==authoritative_key+":"+args.target]:
             del _CURRENT_DATABASE.state_keys[key]
         if args.save:
+            didtrash = True
             _CURRENT_DATABASE.state_keys[authoritative_key+":~trash"] = [item for item in _CURRENT_DATABASE.state_keys[authoritative_key+":"+args.target]]
         else:
             os.remove(os.path.join(
