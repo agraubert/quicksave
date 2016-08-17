@@ -841,7 +841,7 @@ class test(unittest.TestCase):
             key = ''
             command = ['--return-result', 'config']
             if trial and not trial%10:
-                if trial%2:
+                if trial%20:
                     key = {k for k in test_global}.pop()
                     command += [key, '--clear', '--global']
                     del reference_global[key]
