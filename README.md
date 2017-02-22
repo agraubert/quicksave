@@ -10,7 +10,7 @@ __Version:__ 1.4.1
 Detailed documentation on the available commands can be found on the [quicksave wiki](https://github.com/agraubert/quicksave/wiki)
 
 #### Getting started:
-The first thing you'll need to do is create a new database:
+The first thing you'll need to do is create a new database where quicksave can store its data:
 ```
 $ quicksave init <path>
 ```
