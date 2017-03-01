@@ -120,9 +120,17 @@ def command_register(args):
                 file_aliases.append(''+user_alias)
         if not len(file_aliases):
             sys.exit("Unable to register: None of the provided aliases were available")
-    if filepath not in _SPECIAL_FILE and _CURRENT_DATABASE.register_fa(key, filepath):
+    if (
+            (_checkflag('inference.path', '1')=='1' or _checkflag('inference.norecord', '0')=='0') and
+            filepath not in _SPECIAL_FILE and
+            _CURRENT_DATABASE.register_fa(key, filepath)
+        ):
         file_aliases.append(filepath)
-    if os.path.basename(filepath) not in _SPECIAL_FILE and _CURRENT_DATABASE.register_fa(key, os.path.basename(filepath)):
+    if (
+            (_checkflag('inference.name', '1')=='1' or _checkflag('inference.norecord', '0')=='0') and 
+            os.path.basename(filepath) not in _SPECIAL_FILE and
+            _CURRENT_DATABASE.register_fa(key, os.path.basename(filepath))
+        ):
         file_aliases.append(os.path.basename(filepath))
     (statekey, datafile) = _CURRENT_DATABASE.register_sk(key, os.path.relpath(filepath))
     hashalias = gethash(args.filename)
@@ -154,9 +162,9 @@ def command_save(args):
     infer = not bool(args.file_key)
     if infer:
         filepath = os.path.abspath(args.filename.name)
-        if filepath in _CURRENT_DATABASE.file_keys:
+        if _checkflag('inference.path', '1')=='1' and filepath in _CURRENT_DATABASE.file_keys:
             args.file_key = _CURRENT_DATABASE.resolve_key(filepath, True)
-        elif os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
+        elif _checkflag('inference.name', '1')=='1' and os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
             args.file_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
             sys.exit("Unable to save: Could not infer the file key.  Please set one explicitly with the -k option")
@@ -166,7 +174,6 @@ def command_save(args):
     hashalias = gethash(args.filename)
     args.filename.close()
     currentstate = fetchstate(hashalias, args.file_key)
-    do_print(currentstate)
     if currentstate and not args.allow_duplicate:
         sys.exit("Unable to save: Duplicate of %s (use --allow-duplicate to override this behavior, or '$ quicksave alias' to create aliases)"%(
             currentstate.replace(args.file_key+":", '', 1)
@@ -207,9 +214,9 @@ def command_revert(args):
     args.stash = args.stash and _checkflag('revert.stash', '1')=='1'
     if infer:
         filepath = os.path.abspath(args.filename.name)
-        if filepath in _CURRENT_DATABASE.file_keys:
+        if _checkflag('inference.path', '1')=='1' and filepath in _CURRENT_DATABASE.file_keys:
             args.file_key = _CURRENT_DATABASE.resolve_key(filepath, True)
-        elif os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
+        elif _checkflag('inference.name', '1')=='1' and os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
             args.file_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
             sys.exit("Unable to revert: Could not infer the file key.  Please set one explicitly with the -k option")
@@ -751,9 +758,9 @@ def command_status(args):
     did_stash = False
     if infer:
         filepath = os.path.abspath(args.filename.name)
-        if filepath in _CURRENT_DATABASE.file_keys:
+        if _checkflag('inference.path', '1')=='1' and filepath in _CURRENT_DATABASE.file_keys:
             args.file_key = _CURRENT_DATABASE.resolve_key(filepath, True)
-        elif os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
+        elif _checkflag('inference.name', '1')=='1' and os.path.basename(filepath) in _CURRENT_DATABASE.file_keys:
             args.file_key = _CURRENT_DATABASE.resolve_key(os.path.basename(filepath), True)
         else:
             sys.exit("Unable to check status: Could not infer the file key.  Please set one explicitly with the -k option")
