@@ -1,6 +1,7 @@
 import os
 import shutil
 import csv
+from hashlib import md5
 
 def reserve_name(base_name, existence_set):
     (filepath, filename) = os.path.split(base_name)
@@ -51,36 +52,44 @@ class Database:
             if verification != "<QUICKSAVE DB>":
                 raise ValueError("Unable to verify database")
             reader = csv.reader(configreader, delimiter='\t')
+            hasher = md5()
+            checksum = None
             for data in reader:
-                if data[0] == 'FK': #file key
-                    data_folder = os.path.abspath(os.path.join(self.base_dir, data[2]))
-                    self.file_keys[data[1]] = [
-                        None,
-                        data_folder,
-                        {item for item in data[3:]}
-                    ]
-                    self.data_folders.add(data_folder)
-                elif data[0] == 'FA':
-                    self.file_keys[data[1]] = [
-                        data[2],
-                        None,
-                        None
-                    ]
-                elif data[0] == 'SK':
-                    self.state_keys[data[1]] = [
-                        None,
-                        data[2],
-                        data[3]
-                    ]
-                elif data[0] == 'SA':
-                    self.state_keys[data[1]] = [
-                        data[2],
-                        data[3],
-                        None
-                    ]
-                elif data[0] == 'CONFIG':
-                    self.flags[data[1]] = data[2]
+                if data[0] == 'MD5':
+                    checksum = data[1]
+                else:
+                    hasher.update('\t'.join(data).encode())
+                    if data[0] == 'FK': #file key
+                        data_folder = os.path.abspath(os.path.join(self.base_dir, data[2]))
+                        self.file_keys[data[1]] = [
+                            None,
+                            data_folder,
+                            {item for item in data[3:]}
+                        ]
+                        self.data_folders.add(data_folder)
+                    elif data[0] == 'FA':
+                        self.file_keys[data[1]] = [
+                            data[2],
+                            None,
+                            None
+                        ]
+                    elif data[0] == 'SK':
+                        self.state_keys[data[1]] = [
+                            None,
+                            data[2],
+                            data[3]
+                        ]
+                    elif data[0] == 'SA':
+                        self.state_keys[data[1]] = [
+                            data[2],
+                            data[3],
+                            None
+                        ]
+                    elif data[0] == 'CONFIG':
+                        self.flags[data[1]] = data[2]
             configreader.close()
+            if checksum is not None and hasher.hexdigest() != checksum:
+                raise ValueError("Unable to verify database")
     def register_fk(self, filename):
         (filepath, root_name) = os.path.split(filename)
         canonical = ''.join(char for char in root_name if char.isalnum())
@@ -141,27 +150,49 @@ class Database:
         return False
 
     def save(self):
-        configwriter = open(os.path.join(
-            self.base_dir,
-            '.db_config'
-        ), mode='w')
-        configwriter.write('<QUICKSAVE DB>\n')
-        writer = csv.writer(configwriter, delimiter='\t', lineterminator='\n')
-        for key in self.file_keys:
-            entry = self.file_keys[key]
-            if entry[0]:
-                writer.writerow(['FA', key, entry[0]])
-            else:
-                writer.writerow(['FK', key, os.path.relpath(entry[1], self.base_dir)]+[item for item in entry[2]])
-        for key in self.state_keys:
-            entry = self.state_keys[key]
-            if entry[0]:
-                writer.writerow(['SA', key, entry[0], entry[1]])
-            else:
-                writer.writerow(['SK', key, entry[1], entry[2]])
-        for key in self.flags:
-            writer.writerow(['CONFIG', key, self.flags[key]])
-        configwriter.close()
+        try:
+            configwriter = open(os.path.join(
+                self.base_dir,
+                '.db_config.tmp'
+            ), mode='w')
+            configwriter.write('<QUICKSAVE DB>\n')
+            hasher = md5()
+            writer = csv.writer(configwriter, delimiter='\t', lineterminator='\n')
+            def writerow(args):
+                hasher.update('\t'.join(args).encode())
+                writer.writerow(args)
+            for key in self.file_keys:
+                entry = self.file_keys[key]
+                if entry[0]:
+                    writerow(['FA', key, entry[0]])
+                else:
+                    writerow(['FK', key, os.path.relpath(entry[1], self.base_dir)]+[item for item in entry[2]])
+            for key in self.state_keys:
+                entry = self.state_keys[key]
+                if entry[0]:
+                    writerow(['SA', key, entry[0], entry[1]])
+                else:
+                    writerow(['SK', key, entry[1], entry[2]])
+            for key in self.flags:
+                writerow(['CONFIG', key, self.flags[key]])
+            writerow(['MD5', hasher.hexdigest()])
+            configwriter.close()
+        except Exception as e:
+            os.remove(os.path.join(
+                self.base_dir,
+                '.db_config.tmp'
+            ))
+        else:
+            shutil.move(
+                os.path.join(
+                    self.base_dir,
+                    '.db_config.tmp'
+                ),
+                os.path.join(
+                    self.base_dir,
+                    '.db_config'
+                )
+            )
 
     def resolve_key(self, alias, isfile):
         if isfile:
