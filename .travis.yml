@@ -12,3 +12,4 @@ script:
 - if [[ "$TRAVIS_PYTHON_VERSION" != "3.2" ]]; then coverage run --source=quicksave -m unittest discover -v; else python3 -m unittest discover -v; fi
 after_success:
 - coveralls
+dist: trusty
