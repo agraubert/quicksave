@@ -17,7 +17,8 @@ setup(
     name="quicksave",
     version=version,
     packages=[
-        "quicksave"
+        "quicksave",
+        "quicksave.commands"
     ],
     entry_points={
         "console_scripts":[

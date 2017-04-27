@@ -351,7 +351,7 @@ def main(args_input=sys.argv[1:]):
     clean_parser.add_argument(
         '-s', '--states',
         action='store_true',
-        help="Checks for and removes any state keys/aliases with missing parent file keys"
+        help="Checks for and removes any state keos.path.basename(aliases with missing parent file keys"
     )
     clean_parser.add_argument(
         '-r', '--rebuild-file-index',
