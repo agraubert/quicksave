@@ -10,6 +10,7 @@ import warnings
 from filecmp import cmp
 
 DATA = {}
+_do_print = lambda *args, **kwargs: None
 
 def random_string(upper=125):
     return "".join([chr(random.randint(65, upper)) for _ in range(20)])
@@ -34,14 +35,14 @@ class test(unittest.TestCase):
             'quicksave',
             '__main__.py'
         )
-        from quicksave.__main__ import configfile
+        from quicksave.utils import configfile
         if os.path.isfile(configfile):
             copyfile(configfile, 'config_backup')
         warnings.simplefilter('ignore', ResourceWarning)
 
     @classmethod
     def tearDownClass(cls):
-        from quicksave.__main__ import configfile
+        from quicksave.utils import configfile
         if os.path.isfile('config_backup'):
             copyfile('config_backup', configfile)
             os.remove("config_backup")
@@ -591,14 +592,15 @@ class test(unittest.TestCase):
             ])
 
     def test_j_clean(self):
-        from quicksave.__main__ import main, _fetch_db
+        from quicksave.__main__ import main
+        from quicksave.utils import _fetch_db
 
         #create an unused folder in the database
         folderpath = os.path.join(self.db_directory.name, random_string(90))
         os.mkdir(folderpath)
 
         #Create an orphaned database file
-        database = _fetch_db()
+        database = _fetch_db(lambda *args, **kwargs: None)
         filepath = os.path.join(
             self.db_directory.name,
             database.file_keys[DATA['register-filekey']][1],
@@ -617,7 +619,7 @@ class test(unittest.TestCase):
             'register',
             writer.name
         ])
-        database = _fetch_db()
+        database = _fetch_db(_do_print)
         rmtree(os.path.join(
             database.base_dir,
             database.file_keys[result[0]][1],
@@ -633,7 +635,7 @@ class test(unittest.TestCase):
             'register',
             writer.name
         ])
-        database = _fetch_db()
+        database = _fetch_db(_do_print)
         os.remove(os.path.join(
             database.base_dir,
             database.file_keys[result[0]][1],
@@ -699,7 +701,7 @@ class test(unittest.TestCase):
             'save',
             writer.name
         ])
-        database = _fetch_db()
+        database = _fetch_db(_do_print)
         del database.file_keys[register_result[0]]
         del database.state_keys[register_result[0]+":"+save_result[1]]
         database.save()
@@ -715,7 +717,7 @@ class test(unittest.TestCase):
             'register',
             writer.name
         ])
-        database = _fetch_db()
+        database = _fetch_db(_do_print)
         _statekey = register_result[0]+":"+register_result[2]
         del database.state_keys[_statekey]
         database.file_keys[register_result[0]][2] = 'fish'
@@ -831,7 +833,8 @@ class test(unittest.TestCase):
         self.assertEqual(state, DATA['register-filekey']+":"+result[1])
 
     def test_l_config(self):
-        from quicksave.__main__ import main, _fetch_db, _fetch_flags
+        from quicksave.__main__ import main
+        from quicksave.utils import _fetch_db, _fetch_flags
 
         test_global= {}
         test_db = {}
@@ -881,5 +884,5 @@ class test(unittest.TestCase):
                 'config',
                 key
             ])[2])
-        self.assertDictEqual(reference_db, _fetch_db().flags)
+        self.assertDictEqual(reference_db, _fetch_db(_do_print).flags)
         self.assertDictEqual(reference_global, _fetch_flags(False))
