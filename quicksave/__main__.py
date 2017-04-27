@@ -1,5 +1,6 @@
 import argparse
 import sys
+import os
 from . import utils
 from . import commands
 
@@ -32,6 +33,8 @@ def main(args_input=sys.argv[1:]):
     init_parser.add_argument(
         'database_path',
         type=utils.check_is_directory,
+        default=os.path.join(os.path.expanduser('~'), '.quicksave_db'),
+        nargs='?',
         help="The database path to initialize.  If it exists, then load the database.  If not, then create a new one"
     )
 
