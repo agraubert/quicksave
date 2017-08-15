@@ -6,6 +6,7 @@ def command_alias(args, do_print):
     msg = ""
     _data_result = []
     if not (args.d or args.target or args.filekey):
+        args.help()
         sys.exit("Unable to modify table: Not enough arguments provided to determine action")
     if not ((args.d and args.target) or args.filekey): #working with file keys
         if args.d:
