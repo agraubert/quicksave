@@ -840,6 +840,11 @@ class test(unittest.TestCase):
         test_db = {}
         reference_global = {}
         reference_db = {}
+        with self.assertRaises(SystemExit):
+            main([
+                '--return-result',
+                'config'
+            ])
         for trial in range(100):
             key = ''
             command = ['--return-result', 'config']
@@ -884,5 +889,24 @@ class test(unittest.TestCase):
                 'config',
                 key
             ])[2])
+        fullConfig = main([
+            '--return-result',
+            'config',
+            '--list'
+        ])
+        for (key, value) in fullConfig.items():
+            glbVal = value[0]
+            dbVal = value[1]
+            if glbVal is None:
+                self.assertNotIn(key, reference_global)
+            else:
+                self.assertIn(key, reference_global)
+                self.assertEqual(reference_global[key], glbVal)
+            if dbVal is None:
+                self.assertNotIn(key, reference_db)
+            else:
+                self.assertIn(key, reference_db)
+                self.assertEqual(reference_db[key], dbVal)
+
         self.assertDictEqual(reference_db, _fetch_db(_do_print).flags)
         self.assertDictEqual(reference_global, _fetch_flags(False))

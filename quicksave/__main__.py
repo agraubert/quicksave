@@ -178,6 +178,7 @@ def main(args_input=sys.argv[1:]):
         "To delete authoritative file or state keys, use '$ quicksave delete-key <file key> [state key]'"
     )
     alias_parser.set_defaults(func=commands.command_alias)
+    alias_parser.set_defaults(help=alias_parser.print_usage)
     helper['alias'] = alias_parser.print_help
     alias_parser.add_argument(
         "link",
@@ -228,6 +229,7 @@ def main(args_input=sys.argv[1:]):
 
     delete_parser = subparsers.add_parser(
         'delete-key',
+        aliases=['rm', 'delete'],
         description="Deletes a file or state key, and all its aliases"
     )
     delete_parser.set_defaults(func=commands.command_delete)
@@ -390,10 +392,14 @@ def main(args_input=sys.argv[1:]):
         description="Sets or checks the current configuration of quicksave"
     )
     config_parser.set_defaults(func=commands.command_config)
+    config_parser.set_defaults(help=config_parser.print_usage)
     helper['config'] = config_parser.print_help
     config_parser.add_argument(
         'key',
-        help="The name of the setting to check or set"
+        nargs='?',
+        help="The name of the setting to check or set. This argument is always "
+        "required unless using --list to view all keys",
+        default=None
     )
     config_parser.add_argument(
         'value',
@@ -413,6 +419,14 @@ def main(args_input=sys.argv[1:]):
         action='store_true',
         help="Clear the provided key from the database configuration. This "+
         "does not apply when setting configuration"
+    )
+    config_parser.add_argument(
+        '-l',
+        '--list',
+        action='store_true',
+        help="List all configuration keys in use. The 'key' argument is not "
+        "required when this option is present",
+        dest="_list"
     )
 
     help_parser = subparsers.add_parser(
