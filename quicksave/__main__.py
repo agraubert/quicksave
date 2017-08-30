@@ -387,6 +387,69 @@ def main(args_input=sys.argv[1:]):
         default=None
     )
 
+    export_parser = subparsers.add_parser(
+        'export',
+        aliases=['archive'],
+        description="Exports the current database and global configuration to a"
+        " single file which can be imported by another instance of quicksave"
+    )
+    export_parser.set_defaults(func=commands.command_export)
+    export_parser.set_defaults(help=export_parser.print_usage)
+    helper['export'] = export_parser.print_help
+    helper['archive'] = export_parser.print_help
+    export_parser.add_argument(
+        'output',
+        help="The output file to write to.  Compression method will be inferred"
+        " from the file extension.  Supported formats are: '.tar.gz', '.tar.bz2'"
+        ", and '.zip'",
+        type=argparse.FileType('wb')
+    )
+    export_parser.add_argument(
+        'exclude',
+        nargs='*',
+        help="File keys to exclude from the archive. "
+        "You may provide aliases to file keys, which will exclude the file key "
+        "for those aliases",
+        default=[]
+    )
+    export_parser.add_argument(
+        '-e', '--exclude-global',
+        action='store_true',
+        help="Exclude global configuration keys from the export"
+    )
+
+    import_parser = subparsers.add_parser(
+        'import',
+        description="Imports a database from a .tar.gz, .tar.bz2, or .zip file"
+    )
+    import_parser.set_defaults(func=commands.command_import)
+    import_parser.set_defaults(help=import_parser.print_usage)
+    helper['import'] = import_parser.print_help
+    import_parser.add_argument(
+        'input',
+        help="The archive file to import.  Must be .tar.gz, .tar.bz2, or .zip",
+        type=argparse.FileType('rb')
+    )
+    import_parser.add_argument(
+        'database_path',
+        nargs='?',
+        help="Initializes the database at this path, then imports the archive"
+        " to that database",
+        default=os.path.join(os.path.expanduser('~'), '.quicksave_db')
+    )
+    import_parser.add_argument(
+        '-m', '--mode',
+        help="Import mode: "
+        "'overwrite' or 'merge' : imported keys and aliases will overwrite merge"
+        " with and overwrite existing entries. "
+        "'rename' or 'copy' : imported keys and aliases will be renamed if they"
+        " conflict with existing keys or aliases. "
+        "'keep' or 'fail' : skip keys or aliases which conflict with existing "
+        "keys or aliases.  Default: merge",
+        choices=['overwrite', 'merge', 'rename', 'copy', 'keep', 'fail'],
+        default='merge'
+    )
+
     config_parser = subparsers.add_parser(
         'config',
         description="Sets or checks the current configuration of quicksave"
