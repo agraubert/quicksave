@@ -148,23 +148,22 @@ def main(args_input=sys.argv[1:]):
         help="The state key or alias to revert to."
     )
     revert_parser.add_argument(
-        '--no-stash',
-        action='store_false',
-        help="Do not save the state under the ~stash state key before reverting.\n"+
-        "This is the default if reverting to ~stash, but stashing is enabled in all other cases.\n"
-        "If the file's full sha-256 hash is currently registered as a state alias,\n"+
-        "then ~stash will simply alias this file's true state key.\n"+
-        "Otherwise, the full state will be saved under ~stash.\n"
-        "The ~stash state key should not be used for permanent storage as it may be frequently overwritten.\n"+
-        "To save the current ~stash state permanently, use \n"+
-        "'$ quicksave revert <filename> ~stash' then\n"+
-        "'$ quicksave save <filename>'",
+        '--stash',
+        action='store_true',
+        help="Save the current state of the file to ~stash. "
+        "This is the default except when reverting to ~stash",
         dest='stash'
+    )
+    revert_parser.add_argument(
+        '--no-stash',
+        action='store_true',
+        help="Opposite of --stash.  This is the default when reverting to ~stash",
+        dest='nstash'
     )
     revert_parser.add_argument(
         '-f', '--force',
         action='store_true',
-        help="Forces the revert to progress even if the file is already in the requested state"
+        help="Forces the revert even if the file is already in the requested state"
     )
 
     alias_parser = subparsers.add_parser(
@@ -247,17 +246,20 @@ def main(args_input=sys.argv[1:]):
         "This *MUST* be an authoritative key, and not an alias.  Aliases can be deleted using the 'alias' command"
     )
     delete_parser.add_argument(
-        '--no-save',
-        action='store_false',
-        help="By default, the most recently deleted file or state key is saved under the ~trash key\n"+
-        "(which is a reserved file key as well as a reserved state key under all file keys).\n"+
-        "Using the --no-save option disables this behavior, however the deleted key will be immediately and irrecoverably lost.\n"+
-        "~trash should not be used for permanent storage as it may be overwritten frequently.\n"+
-        "To recover the ~trash *FILE* key, use '$ quicksave recover'.\n"+
-        "To recover the ~trash *STATE* key, use\n"+
-        "'$ quicksave revert <filename> ~trash' then\n"+
-        "'$ quicksave save <filename>'.  Note that old aliases of the deleted state key will not be recovered, and must be set manually",
+        '--save', '--trash',
+        action='store_true',
+        help="Move the key and its data to ~trash instead of deleting. "
+        "Data can be recovered from the ~trash file key by using quicksave recover. "
+        "Data can be recovered from ~trash state keys by using quicksave revert. "
+        "Data in a ~trash key will be deleted and overwritten when another key is "
+        "deleted and saved to ~trash",
         dest='save'
+    )
+    delete_parser.add_argument(
+        '--no-save', '--no-trash',
+        action='store_true',
+        help="Opposite of --save.  Immediately and irrecoverably delete the key.",
+        dest='nsave'
     )
     delete_parser.add_argument(
         '-c', '--clean-aliases',

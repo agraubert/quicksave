@@ -6,7 +6,7 @@ from .. import utils
 def command_delete(args, do_print):
     utils.initdb(do_print)
     didtrash = False
-    args.save = args.save and utils._checkflag('delete.trash', '1')=='1'
+    args.save = utils._check_action(args.save, args.nsave, 'delete.trash', '1')
     if not args.filekey:
         #when deleting a file key:
         #   - Remove the data folder for the current ~trash entry

@@ -7,7 +7,7 @@ def command_revert(args, do_print):
     utils.initdb(do_print)
     infer = not bool(args.file_key)
     did_stash = False
-    args.stash = args.stash and utils._checkflag('revert.stash', '1')=='1'
+    args.stash = utils._check_action(args.stash, args.nstash, 'revert.stash', '1')
     if infer:
         filepath = os.path.abspath(args.filename.name)
         if utils._checkflag('inference.path', '1')=='1' and filepath in utils._CURRENT_DATABASE.file_keys:
