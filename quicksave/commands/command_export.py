@@ -65,7 +65,7 @@ def command_export(args, do_print):
             utils._CURRENT_DATABASE.base_dir,
             '.db_config'
         ),
-        'DB'
+        'DATABASE'
     )
     excludes = {
         utils._CURRENT_DATABASE.resolve_key(key, True)
@@ -137,7 +137,7 @@ def command_import(args, do_print):
     else:
         raise TypeError('Unsupported output format: '+ext)
     members = list_members(archive)
-    if 'DB' not in members:
+    if 'DATABASE' not in members:
         sys.exit("This quicksave archive is corrupted")
     staging = tempfile.TemporaryDirectory()
     meta = open(get_member(archive, 'META', staging))
@@ -151,7 +151,7 @@ def command_import(args, do_print):
         elif typ == '--CONFIG:':
             config[line[1]] = line[2]
     # print("The following filekeys will be imported:", filekeys)
-    db_path = get_member(archive, 'DB', staging)
+    db_path = get_member(archive, 'DATABASE', staging)
     shutil.move(
         db_path,
         os.path.join(
