@@ -233,6 +233,8 @@ def main(args_input=sys.argv[1:]):
     )
     delete_parser.set_defaults(func=commands.command_delete)
     helper['delete-key'] = delete_parser.print_help
+    helper['rm'] = delete_parser.print_help
+    helper['delete'] = delete_parser.print_help
     delete_parser.add_argument(
         'filekey',
         nargs='?',
