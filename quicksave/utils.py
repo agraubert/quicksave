@@ -26,6 +26,13 @@ def _checkflag(flagname, default):
         return _FLAGS[flagname]
     return default
 
+def _check_action(yes, no, flag, default):
+    if yes:
+        return True
+    if no:
+        return False
+    return _checkflag(flag, default)=='1'
+
 def _loadflags(raw_reader):
     reader = csv.reader(raw_reader, delimiter='\t')
     for line in reader:

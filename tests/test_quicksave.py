@@ -226,6 +226,40 @@ class test(unittest.TestCase):
             '-k',
             DATA['register-filekey']
         ])
+        with open(sourcefile.name, 'rb') as reader:
+            current = sha256(reader.read()).hexdigest()
+        desired = sha256(DATA['revert-content']).hexdigest()
+        self.assertEqual(current, desired)
+        initial = main([
+            '--return-result',
+            'lookup',
+            DATA['register-filekey'],
+            '~stash'
+        ])
+        main([
+            '--return-result',
+            'revert',
+            sourcefile.name,
+            DATA['save-statekey'],
+            '-k',
+            DATA['register-filekey'],
+            '--no-stash'
+        ])
+        final = main([
+            '--return-result',
+            'lookup',
+            DATA['register-filekey'],
+            '~stash'
+        ])
+        self.assertEqual(initial, final)
+        main([
+            '--return-result',
+            'revert',
+            sourcefile.name,
+            '~stash',
+            '-k',
+            DATA['register-filekey']
+        ])
 
     def test_e_alias(self):
         from quicksave.__main__ import main
@@ -443,11 +477,34 @@ class test(unittest.TestCase):
 
     def test_g_delete(self):
         from quicksave.__main__ import main
-
+        ## Test no-save option
+        tmp = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        tmp.write(os.urandom(4096))
+        tmp.close()
+        filekey = main([
+            '--return-result',
+            'register',
+            tmp.name
+        ])[0]
         main([
             '--return-result',
             'delete-key',
-            DATA['temp-filekey']
+            filekey,
+            '--no-save'
+        ])
+        remaining = main([
+            '--return-result',
+            'list',
+            '-a'
+        ])
+        DATA['all-file-handles'] = [item for item in remaining]
+        self.assertFalse(filekey in remaining)
+        self.assertFalse('~trash' in remaining)
+        ## Test regular options
+        main([
+            '--return-result',
+            'delete-key',
+            DATA['temp-filekey'],
         ])
         remaining = main([
             '--return-result',
@@ -475,7 +532,6 @@ class test(unittest.TestCase):
                 'delete-key',
                 'Probably not a real key though'
             ])
-
         main([
             '--return-result',
             'delete-key',

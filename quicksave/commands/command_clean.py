@@ -211,9 +211,9 @@ def command_clean(args, do_print):
         for filekey in duplicates:
             for hashkey in duplicates[filekey]:
                 if filekey+":"+hashkey not in utils._CURRENT_DATABASE.state_keys:
-                    utils._CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey)
+                    utils._CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey, overwrite=True)
                 if filekey+":"+hashkey[:7] not in utils._CURRENT_DATABASE.state_keys:
-                    utils._CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey[:7])
+                    utils._CURRENT_DATABASE.register_sa(filekey, duplicates[filekey][hashkey].replace(filekey+":", '', 1), hashkey[:7], overwrite=True)
         if len(forward):
             msg += "Removed the following %d duplicate state keys:%s and forwarded %d aliases\n"%(
                 len(forward),
