@@ -357,7 +357,7 @@ def command_import(args, do_print):
     utils._CURRENT_DATABASE.save()
     staging.cleanup()
     archive.close()
-    subprocess.run(
+    subprocess.call(
         'quicksave clean -d',
         shell=True,
         stdout=subprocess.DEVNULL,
