@@ -956,16 +956,12 @@ class test(unittest.TestCase):
                 os.path.abspath(archivename)
             )
             tmp_db = tempfile.TemporaryDirectory()
-            main([
-                '--return-result',
-                'init',
-                tmp_db.name
-            ])
 
             main([
                 '--return-result',
                 'import',
-                archivename
+                archivename,
+                tmp_db.name
             ])
 
 
