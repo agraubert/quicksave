@@ -108,10 +108,14 @@ def command_export(args, do_print):
 
 def command_import(args, do_print):
     #args.input, args.database_path, args.mode
+    from .command_init import command_init
     try:
+        if args.database_path:
+            args.database_path = utils.check_is_directory(os.path.abspath(args.database_path))
+            command_init(args, do_print)
         utils.initdb(do_print)
     except SystemExit:
-        from .command_init import command_init
+        args.database_path = os.path.join(os.path.expanduser('~'), '.quicksave_db')
         command_init(args, do_print)
         utils.initdb(do_print)
 

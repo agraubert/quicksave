@@ -435,7 +435,7 @@ def main(args_input=sys.argv[1:]):
         nargs='?',
         help="Initializes the database at this path, then imports the archive"
         " to that database",
-        default=os.path.join(os.path.expanduser('~'), '.quicksave_db')
+        default=''
     )
     import_parser.add_argument(
         '-m', '--mode',
