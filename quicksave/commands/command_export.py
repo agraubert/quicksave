@@ -44,13 +44,13 @@ def command_export(args, do_print):
             raise TypeError('Unsupported output format: '+tar+ext)
         if ext == '.gz':
             archive = tarfile.open(
-                mode='w:gz',
+                mode='w|gz',
                 fileobj=args.output
             )
             archive._fmt='tar'
         else:
             archive = tarfile.open(
-                mode='w:bz2',
+                mode='w|bz2',
                 fileobj=args.output
             )
             archive._fmt='tar'
@@ -103,6 +103,7 @@ def command_export(args, do_print):
     )
     staging.cleanup()
     archive.close()
+    args.output.close()
     return args.output.name
 
 def command_import(args, do_print):
@@ -357,10 +358,11 @@ def command_import(args, do_print):
     utils._CURRENT_DATABASE.save()
     staging.cleanup()
     archive.close()
+    devnull = open(os.devnull, 'w') if sys.version_info < (3,3) else subprocess.DEVNULL
     subprocess.call(
         'quicksave clean -d',
         shell=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stdout=devnull,
+        stderr=devnull
     )
     return output
