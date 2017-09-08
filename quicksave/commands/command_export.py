@@ -6,6 +6,7 @@ import zipfile
 import tarfile
 import tempfile
 import shutil
+import csv
 import subprocess
 
 def add_file(archive, filename, arcname=None):
@@ -37,10 +38,10 @@ def command_export(args, do_print):
     if ext == '.zip':
         archive = zipfile.ZipFile(args.output, 'w')
         archive._fmt='zip'
-    elif ext == '.gz' or ext == 'bz2':
+    elif ext == '.gz' or ext == '.bz2':
         tar = os.path.splitext(root)[1]
         if tar != '.tar':
-            raise argparse.ArgumentError('Unsupported output format: '+tar+ext)
+            raise TypeError('Unsupported output format: '+tar+ext)
         if ext == '.gz':
             archive = tarfile.open(
                 mode='w:gz',
@@ -54,18 +55,10 @@ def command_export(args, do_print):
             )
             archive._fmt='tar'
     else:
-        raise argparse.ArgumentError('Unsupported output format: '+ext)
-    if not args.exclude_global:
-        staging = tempfile.TemporaryDirectory()
-        meta = open(staging.name+os.path.sep+'META', 'w')
-        for (key, value) in utils._FLAGS.items():
-            meta.write(key+'\t'+value+'\n')
-        meta.close()
-        add_file(
-            archive,
-            os.path.join(staging.name, meta.name),
-            'META'
-        )
+        raise TypeError('Unsupported output format: '+ext)
+
+    staging = tempfile.TemporaryDirectory()
+    meta = open(staging.name+os.path.sep+'META', 'w')
     add_file(
         archive,
         os.path.join(
@@ -74,8 +67,16 @@ def command_export(args, do_print):
         ),
         'DB'
     )
+    excludes = {
+        utils._CURRENT_DATABASE.resolve_key(key, True)
+        for key in args.exclude
+        if key in utils._CURRENT_DATABASE.file_keys
+    }
     for (key, data) in utils._CURRENT_DATABASE.file_keys.items():
-        if data[0] is None:
+        if data[0] is None and key not in excludes:
+            meta.write(
+                '--KEY:\t%s\n' % key
+            )
             for state in data[2]:
                 add_file(
                     archive,
@@ -87,7 +88,20 @@ def command_export(args, do_print):
                     key+'.'+state
                 )
     if not args.exclude_global:
-        staging.cleanup()
+        for (key, value) in utils._FLAGS.items():
+            meta.write(
+                '--CONFIG:\t%s\t%s\n' % (
+                    key,
+                    value
+                )
+            )
+    meta.close()
+    add_file(
+        archive,
+        os.path.join(staging.name, meta.name),
+        'META'
+    )
+    staging.cleanup()
     archive.close()
     return args.output.name
 
@@ -104,10 +118,10 @@ def command_import(args, do_print):
     if ext == '.zip':
         archive = zipfile.ZipFile(args.input, 'r')
         archive._fmt='zip'
-    elif ext == '.gz' or ext == 'bz2':
+    elif ext == '.gz' or ext == '.bz2':
         tar = os.path.splitext(root)[1]
         if tar != '.tar':
-            raise argparse.ArgumentError('Unsupported output format: '+tar+ext)
+            raise TypeError('Unsupported output format: '+tar+ext)
         if ext == '.gz':
             archive = tarfile.open(
                 mode='r:gz',
@@ -121,11 +135,22 @@ def command_import(args, do_print):
             )
             archive._fmt='tar'
     else:
-        raise argparse.ArgumentError('Unsupported output format: '+ext)
+        raise TypeError('Unsupported output format: '+ext)
     members = list_members(archive)
     if 'DB' not in members:
         sys.exit("This quicksave archive is corrupted")
     staging = tempfile.TemporaryDirectory()
+    meta = open(get_member(archive, 'META', staging))
+    filekeys = set()
+    config = {}
+    for line in meta:
+        line = line.split('\t')
+        typ = line[0]
+        if typ == '--KEY:':
+            filekeys.add(line[1].strip())
+        elif typ == '--CONFIG:':
+            config[line[1]] = line[2]
+    # print("The following filekeys will be imported:", filekeys)
     db_path = get_member(archive, 'DB', staging)
     shutil.move(
         db_path,
@@ -158,7 +183,7 @@ def command_import(args, do_print):
     output = {}
     #import file keys
     for (filekey, filedata) in DB.file_keys.items():
-        if filedata[0] is None:
+        if filedata[0] is None and filekey in filekeys:
             current_folders = {
                 os.path.basename(folder)
                 for folder in utils._CURRENT_DATABASE.data_folders
@@ -309,7 +334,7 @@ def command_import(args, do_print):
                     )
                 elif args.mode == 'keep' or args.mode == 'fail':
                     continue
-            output[statealias] = [keynames[satealias], keynames[statedata[0]]]
+            output[statealias] = [keynames[statealias], keynames[statedata[0]]]
             # do_print('importing state alias', statealias)
             # do_print('alias', statealias, '->', keynames[statealias])
             # do_print('target', statedata[0], '->', keynames[statedata[0]])
@@ -320,6 +345,14 @@ def command_import(args, do_print):
                 None
             ]
 
+    # now import global config
+    for (key, value) in config.items():
+        utils._FLAGS[key] = value
+    raw_writer = open(utils.configfile, mode='w')
+    raw_writer.write(utils._CURRENT_DATABASE.base_dir+'\n')
+    writer = csv.writer(raw_writer, delimiter='\t', lineterminator='\n')
+    writer.writerows([[key,utils._FLAGS[key]] for key in utils._FLAGS])
+    raw_writer.close()
     # now clean up
     utils._CURRENT_DATABASE.save()
     staging.cleanup()
