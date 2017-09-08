@@ -226,6 +226,40 @@ class test(unittest.TestCase):
             '-k',
             DATA['register-filekey']
         ])
+        with open(sourcefile.name, 'rb') as reader:
+            current = sha256(reader.read()).hexdigest()
+        desired = sha256(DATA['revert-content']).hexdigest()
+        self.assertEqual(current, desired)
+        initial = main([
+            '--return-result',
+            'lookup',
+            DATA['register-filekey'],
+            '~stash'
+        ])
+        main([
+            '--return-result',
+            'revert',
+            sourcefile.name,
+            DATA['save-statekey'],
+            '-k',
+            DATA['register-filekey'],
+            '--no-stash'
+        ])
+        final = main([
+            '--return-result',
+            'lookup',
+            DATA['register-filekey'],
+            '~stash'
+        ])
+        self.assertEqual(initial, final)
+        main([
+            '--return-result',
+            'revert',
+            sourcefile.name,
+            '~stash',
+            '-k',
+            DATA['register-filekey']
+        ])
 
     def test_e_alias(self):
         from quicksave.__main__ import main
