@@ -10,3 +10,4 @@ from .command_recover import command_recover
 from .command_clean import command_clean
 from .command_status import command_status
 from .command_config import command_config
+from .command_export import command_export, command_import

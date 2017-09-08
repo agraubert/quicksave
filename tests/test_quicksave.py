@@ -15,6 +15,10 @@ _do_print = lambda *args, **kwargs: None
 def random_string(upper=125):
     return "".join([chr(random.randint(65, upper)) for _ in range(20)])
 
+def hashfile(filepath):
+    with open(filepath, 'rb') as reader:
+        return sha256(reader.read()).hexdigest()
+
 if "TemporaryDirectory" not in dir(tempfile):
     def simple_tempdir():
         output = lambda :None
@@ -966,3 +970,86 @@ class test(unittest.TestCase):
 
         self.assertDictEqual(reference_db, _fetch_db(_do_print).flags)
         self.assertDictEqual(reference_global, _fetch_flags(False))
+
+    def test_m_export(self):
+        from quicksave.__main__ import main
+        from quicksave.utils import _fetch_db, _fetch_flags, configfile
+
+        current_config = hashfile(configfile)
+        hashes = {}
+        for (path, _, filenames) in os.walk(self.db_directory.name):
+            for filename in filenames:
+                fullpath = os.path.join(path, filename)
+                key = os.path.join(
+                    os.path.relpath(
+                        path,
+                        start=self.db_directory.name
+                    ),
+                    filename
+                )
+                # print(fullpath, key)
+                hashes[key] = hashfile(fullpath)
+        main([
+            '--return-result',
+            'clean',
+            '--clean-all'
+        ])
+
+        for extension in {'.tar.gz', '.tar.bz2', '.zip'}:
+            # print("Testing", extension)
+
+            archivename = os.path.join(
+                self.test_directory.name,
+                random_string(90)+extension
+            )
+            path = main([
+                '--return-result',
+                'export',
+                archivename
+            ])
+            self.assertEqual(
+                os.path.abspath(path),
+                os.path.abspath(archivename)
+            )
+            tmp_db = tempfile.TemporaryDirectory()
+
+            main([
+                '--return-result',
+                'import',
+                archivename,
+                tmp_db.name
+            ])
+
+
+            for (path, _, filenames) in os.walk(tmp_db.name):
+                for filename in filenames:
+                    fullpath = os.path.join(path, filename)
+                    key = os.path.join(
+                        os.path.relpath(
+                            path,
+                            start=tmp_db.name
+                        ),
+                        filename
+                    )
+                    if filename == '.db_config':
+                        # because the actual .db_config file will differ
+                        # since ordering of keys in the database is not
+                        # guaranteed
+                        continue
+                    # print(fullpath, key)
+                    hashval = hashfile(fullpath)
+                    # if key in hashes and hashval != hashes[key]:
+                    #     print(key)
+                    #     print(hashval)
+                    #     print(hashes[key])
+                    #     import pdb; pdb.set_trace()
+                    self.assertIn(key, hashes)
+                    self.assertEqual(hashval, hashes[key])
+
+            tmp_db.cleanup()
+
+            main([
+                '--return-result',
+                'init',
+                self.db_directory.name
+            ])
