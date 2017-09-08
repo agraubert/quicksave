@@ -477,11 +477,34 @@ class test(unittest.TestCase):
 
     def test_g_delete(self):
         from quicksave.__main__ import main
-
+        ## Test no-save option
+        tmp = open(os.path.join(self.test_directory.name, random_string(90)), 'w+b')
+        tmp.write(os.urandom(4096))
+        tmp.close()
+        filekey = main([
+            '--return-result',
+            'register',
+            tmp.name
+        ])[0]
         main([
             '--return-result',
             'delete-key',
-            DATA['temp-filekey']
+            filekey,
+            '--no-save'
+        ])
+        remaining = main([
+            '--return-result',
+            'list',
+            '-a'
+        ])
+        DATA['all-file-handles'] = [item for item in remaining]
+        self.assertFalse(filekey in remaining)
+        self.assertFalse('~trash' in remaining)
+        ## Test regular options
+        main([
+            '--return-result',
+            'delete-key',
+            DATA['temp-filekey'],
         ])
         remaining = main([
             '--return-result',
@@ -509,7 +532,6 @@ class test(unittest.TestCase):
                 'delete-key',
                 'Probably not a real key though'
             ])
-
         main([
             '--return-result',
             'delete-key',
