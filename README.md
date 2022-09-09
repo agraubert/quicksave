@@ -7,6 +7,8 @@ A (very) simple file versioning system
 
 __Version:__ 1.7.0
 
+## This project has moved to [GitLab](https://gitlab.graubert.com/agraubert/quicksave)
+
 Detailed documentation on the available commands can be found on the [quicksave wiki](https://github.com/agraubert/quicksave/wiki)
 
 #### Getting started:
